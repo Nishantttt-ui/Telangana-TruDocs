@@ -1,0 +1,129 @@
+:root {
+  --bg: #f5f6f8;
+  --card-bg: #ffffff;
+  --text: #1a1d23;
+  --muted: #6b7280;
+  --primary: #1c6e4a;
+  --primary-hover: #155a3b;
+  --border: #e2e4e9;
+  --error-bg: #fdecec;
+  --error-text: #b3261e;
+  --warning-bg: #fff8e6;
+  --warning-text: #8a6100;
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 32px 20px 80px;
+}
+
+header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+header h1 {
+  font-size: 28px;
+  margin-bottom: 4px;
+}
+
+header p {
+  color: var(--muted);
+  margin: 0;
+}
+
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.card h2 {
+  margin-top: 0;
+  font-size: 18px;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 14px;
+  margin-top: -4px;
+}
+
+.warning {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  font-size: 13px;
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+input, select {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  width: 100%;
+}
+
+button {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  background: var(--primary);
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+button:hover:not(:disabled) { background: var(--primary-hover); }
+button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.result {
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f0fdf4;
+  font-size: 13px;
+  overflow-x: auto;
+}
+
+.result.error {
+  background: var(--error-bg);
+  color: var(--error-text);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161a;
+    --card-bg: #1c1f26;
+    --text: #e8e9ec;
+    --muted: #9aa0ab;
+    --border: #2a2e37;
+    --error-bg: #3a1f1f;
+    --error-text: #ff8a80;
+    --warning-bg: #33290f;
+    --warning-text: #f0c060;
+  }
+  .result { background: #16261c; }
+}
