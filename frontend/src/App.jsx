@@ -80,6 +80,15 @@ function ResultBox({ error, result }) {
   )
 }
 
+function Field({ label, required, children }) {
+  return (
+    <div className="field">
+      <label>{label}{required && <span className="req">*</span>}</label>
+      {children}
+    </div>
+  )
+}
+
 function MutationForm() {
   const { post } = useApi()
   const [assessmentNumber, setAssessmentNumber] = useState('')
@@ -102,19 +111,18 @@ function MutationForm() {
   }
 
   return (
-    <>
-      <p className="hint">Enter your Assessment / PTIN number.</p>
-      <form onSubmit={submit}>
+    <form onSubmit={submit}>
+      <Field label="Assessment Number" required>
         <input
-          placeholder="Assessment Number"
+          placeholder="e.g. 1010133899"
           value={assessmentNumber}
           onChange={(e) => setAssessmentNumber(e.target.value)}
           required
         />
-        <button type="submit" disabled={loading}>{loading ? 'Checking…' : 'Check Status'}</button>
-      </form>
+      </Field>
+      <button type="submit" disabled={loading}>{loading ? 'Checking…' : 'Check Status'}</button>
       <ResultBox error={error} result={result} />
-    </>
+    </form>
   )
 }
 
@@ -146,20 +154,21 @@ function PropertyTaxForm() {
   }
 
   return (
-    <>
-      <p className="hint">Select your Circle and enter your PTIN number.</p>
-      <form onSubmit={submit}>
+    <form onSubmit={submit}>
+      <Field label="Circle" required>
         <select value={circle} onChange={(e) => setCircle(e.target.value)} required>
           <option value="">Select Circle</option>
           {circles.map((c) => (
             <option key={c.value} value={c.value}>{c.label}</option>
           ))}
         </select>
-        <input placeholder="PTIN Number" value={ptin} onChange={(e) => setPtin(e.target.value)} required />
-        <button type="submit" disabled={loading}>{loading ? 'Checking…' : 'Check Tax Status'}</button>
-      </form>
+      </Field>
+      <Field label="PTIN Number" required>
+        <input placeholder="e.g. 1010133899" value={ptin} onChange={(e) => setPtin(e.target.value)} required />
+      </Field>
+      <button type="submit" disabled={loading}>{loading ? 'Checking…' : 'Check Tax Status'}</button>
       <ResultBox error={error} result={result} />
-    </>
+    </form>
   )
 }
 
@@ -227,30 +236,37 @@ function AdangalForm() {
   }
 
   return (
-    <>
-      <p className="hint">Select District → Division → Mandal → Village, then enter your Survey Number.</p>
-      <form onSubmit={submit}>
+    <form onSubmit={submit}>
+      <Field label="District" required>
         <select value={districtId} onChange={(e) => onDistrict(e.target.value)} required>
           <option value="">Select District</option>
           {districts.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
         </select>
+      </Field>
+      <Field label="Division" required>
         <select value={divisionId} onChange={(e) => onDivision(e.target.value)} disabled={!districtId} required>
           <option value="">Select Division</option>
           {divisions.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
         </select>
+      </Field>
+      <Field label="Mandal" required>
         <select value={mandalId} onChange={(e) => onMandal(e.target.value)} disabled={!divisionId} required>
           <option value="">Select Mandal</option>
           {mandals.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
         </select>
+      </Field>
+      <Field label="Village" required>
         <select value={villageId} onChange={(e) => setVillageId(e.target.value)} disabled={!mandalId} required>
           <option value="">Select Village</option>
           {villages.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
         </select>
-        <input placeholder="Survey Number" value={surveyNo} onChange={(e) => setSurveyNo(e.target.value)} required />
-        <button type="submit" disabled={loading}>{loading ? 'Searching…' : 'Get Adangal'}</button>
-      </form>
+      </Field>
+      <Field label="Survey Number" required>
+        <input placeholder="e.g. 123" value={surveyNo} onChange={(e) => setSurveyNo(e.target.value)} required />
+      </Field>
+      <button type="submit" disabled={loading}>{loading ? 'Searching…' : 'Get Adangal'}</button>
       <ResultBox error={error} result={result} />
-    </>
+    </form>
   )
 }
 
@@ -258,74 +274,115 @@ const DOCUMENT_TYPES = [
   {
     id: 'ghmc-mutation',
     icon: 'ti ti-home-2',
-    name: 'GHMC Mutation Status',
-    desc: 'Check the latest ownership mutation status for a Hyderabad property by assessment number.',
+    navLabel: 'GHMC Mutation',
     tag: 'Municipality',
+    heading: 'GHMC Mutation Status',
+    description: 'Check the latest ownership mutation status for a Hyderabad property by assessment number.',
     Form: MutationForm,
   },
   {
     id: 'ghmc-property-tax',
     icon: 'ti ti-receipt',
-    name: 'GHMC Property Tax',
-    desc: 'Search property tax records by PTIN, owner name, or door number.',
+    navLabel: 'GHMC Property Tax',
     tag: 'Municipality',
+    heading: 'GHMC Property Tax',
+    description: 'Search property tax records by PTIN, owner name, or door number, within a circle.',
     Form: PropertyTaxForm,
   },
   {
     id: 'adangal',
     icon: 'ti ti-map-2',
-    name: 'Adangal Extract (Pahani)',
-    desc: 'Land ownership, cultivation, and usage record for agricultural land, by village and survey number.',
+    navLabel: 'Adangal (Pahani)',
     tag: 'Revenue dept',
+    heading: 'Adangal Extract (Pahani)',
+    description: 'Land ownership, cultivation, and usage record for agricultural land, by village and survey number.',
     Form: AdangalForm,
   },
 ]
 
+function Skyline() {
+  const buildings = [40, 60, 30, 75, 45, 90, 55, 35, 70, 50, 65, 38, 80, 42]
+  return (
+    <svg className="skyline" viewBox="0 0 700 90" preserveAspectRatio="none" fill="none">
+      {buildings.map((h, i) => (
+        <rect key={i} x={i * 50 + 5} y={90 - h} width="36" height={h} fill="currentColor" opacity="0.5" />
+      ))}
+    </svg>
+  )
+}
+
 export default function App() {
-  const [activeId, setActiveId] = useState(null)
-  const active = DOCUMENT_TYPES.find((d) => d.id === activeId)
+  const [activeId, setActiveId] = useState(DOCUMENT_TYPES[0].id)
+  const activeIndex = DOCUMENT_TYPES.findIndex((d) => d.id === activeId)
+  const active = DOCUMENT_TYPES[activeIndex]
 
   return (
     <div className="app">
-      <div className="topbar">
-        <div className="brand">
-          <i className="ti ti-file-certificate" />
-          Telangana TruDocs
-        </div>
-        <span className="brand-sub">Beta</span>
-      </div>
-
-      {!active && (
-        <div className="hero">
-          <h1>Telangana's property records engine.</h1>
-          <p>Search official land, tax, and mutation records — verified straight from the source.</p>
-        </div>
-      )}
-
-      {!active ? (
-        <div className="explore">
+      <nav className="navbar">
+        <div className="brand"><i className="ti ti-building-skyscraper" /> TruDocs Telangana</div>
+        <div className="nav-tabs">
           {DOCUMENT_TYPES.map((d) => (
-            <button key={d.id} className="explore-card" onClick={() => setActiveId(d.id)}>
-              <div className="icon"><i className={d.icon} /></div>
-              <h3>{d.name}</h3>
-              <p>{d.desc}</p>
-              <span className="tag">{d.tag}</span>
+            <button
+              key={d.id}
+              className={`nav-tab${d.id === activeId ? ' active' : ''}`}
+              onClick={() => setActiveId(d.id)}
+            >
+              <i className={d.icon} /> {d.navLabel}
             </button>
           ))}
         </div>
-      ) : (
-        <div className="panel-wrap">
-          <div className="panel">
-            <div className="panel-header">
-              <h2>{active.name}</h2>
-              <button className="back-btn" onClick={() => setActiveId(null)} aria-label="Back">
-                <i className="ti ti-x" />
-              </button>
-            </div>
-            <active.Form />
+      </nav>
+
+      <div className="hero">
+        <div className="hero-badge left">
+          <div className="icon"><i className="ti ti-shield-check" /></div>
+          <div>
+            <div className="title">Govt. Verified</div>
+            <div className="subtitle">Live government data</div>
           </div>
         </div>
-      )}
+        <div className="hero-badge right">
+          <div className="icon"><i className="ti ti-map-pin" /></div>
+          <div>
+            <div className="title">33 Districts</div>
+            <div className="subtitle">Statewide coverage</div>
+          </div>
+        </div>
+
+        <h1>Telangana's own <em>property records</em> engine.</h1>
+        <p className="tagline">
+          Search property tax, mutation, and land records — verified live from GHMC and CCLA, Telangana.
+        </p>
+
+        <div className="stat-bar">
+          <div className="stat">
+            <span className="num">3</span>
+            <span className="label">Live Document Types</span>
+          </div>
+          <div className="stat">
+            <span className="num">33</span>
+            <span className="label">Districts Covered</span>
+          </div>
+          <div className="stat">
+            <span className="num">2026</span>
+            <span className="label">Live Since</span>
+          </div>
+        </div>
+
+        <Skyline />
+      </div>
+
+      <div className="search-section">
+        <div className="search-intro">
+          <span className="index">{String(activeIndex + 1).padStart(2, '0')}</span>
+          <span className="pill">{active.tag}</span>
+          <h2>{active.heading}</h2>
+          <p>{active.description}</p>
+        </div>
+        <div className="form-card">
+          <active.Form key={active.id} />
+        </div>
+      </div>
     </div>
   )
 }
