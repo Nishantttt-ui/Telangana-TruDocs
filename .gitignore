@@ -1,0 +1,17 @@
+.env
+*.env
+venv/
+.venv/
+__pycache__/
+*.pyc
+*token*.json
+*credential*.json
+*.db
+backend/data/raw/
+backend/data/samples/
+backend/data/_bulk_scrape_progress.json
+*.log
+*.tmp
+node_modules/
+frontend/dist/
+.DS_Store
