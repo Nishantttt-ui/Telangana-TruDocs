@@ -194,16 +194,41 @@ def fetch_adangal(
     return _parse_result(resp.text)
 
 
-def _parse_result(html: str) -> dict:
-    lower = html.lower()
-    if "no record" in lower or "no data" in lower:
-        raise PortalError(NOT_FOUND, "portal reported no record")
-    if "captcha" in lower and ("doesnot match" in lower or "does not match" in lower or "invalid" in lower):
-        raise PortalError("Search failed due to a security-check mismatch. Please try again.", "captcha mismatch on replay")
+_NOT_FOUND_RE = re.compile(r'<font[^>]*color:\s*red[^>]*>\s*(No [^<]*?Found)\s*</font>', re.I)
 
-    tables = re.findall(r"<table[^>]*>.*?</table>", html, re.S)
+
+def _parse_result(html: str) -> dict:
+    # IMPORTANT (found the hard way via a byte-diff against a fresh page load):
+    # this page's static <script> block always contains the words "captcha"
+    # and "invalid" (e.g. in "Invalid option selected") on EVERY render,
+    # success or failure — an earlier version of this function treated that
+    # combination as a captcha-mismatch signal and was wrong 100% of the time.
+    # A real "no results for this survey/khata number" response instead
+    # renders a specific message like "No RoR-1B Details Found" inside a
+    # <font color="red"> tag in the results section (#rorDiv / #pahaniDiv) —
+    # that is the actual, confirmed-live signal to key off.
+    not_found_messages = _NOT_FOUND_RE.findall(html)
+
+    # A genuine result renders a data table inside the results rows, not just
+    # the page's own layout tables (nav/footer tables etc. always exist) — so
+    # only count tables that appear inside the rorDiv/pahaniDiv result blocks.
+    result_section = re.search(r'id="rorDiv".*?id="pahaniDiv".*?</tr>', html, re.S)
+    section_html = result_section.group(0) if result_section else ""
+    data_tables = re.findall(r"<table[^>]*>.*?</table>", section_html, re.S)
+
+    if not_found_messages and not data_tables:
+        raise PortalError(NOT_FOUND, f"portal reported: {'; '.join(not_found_messages)}")
+
+    if not not_found_messages and not data_tables:
+        # Neither a known "not found" message nor a data table was seen —
+        # something unexpected happened (portal error page, layout change,
+        # etc.). Don't guess; surface as a portal error rather than silently
+        # claiming success or a specific known failure mode.
+        raise PortalError(PORTAL_DOWN, "unrecognized response shape from portal")
+
     return {
         "source": "adangal_pahani",
-        "found": bool(tables),
-        "raw_tables_html": tables[:3],
+        "found": bool(data_tables),
+        "not_found_messages": not_found_messages,
+        "raw_tables_html": data_tables[:3],
     }

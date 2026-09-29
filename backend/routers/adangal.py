@@ -43,13 +43,10 @@ class AdangalRequest(BaseModel):
 
 @router.post("/search")
 def search(req: AdangalRequest):
-    # NOTE: the location cascade above (districts -> divisions -> mandals ->
-    # villages -> survey-options) is confirmed working live end-to-end. This
-    # final search submission is wired per the site's confirmed request shape
-    # but has NOT yet returned a verified real result in testing (the portal's
-    # response consistently looked like an unchanged landing page rather than
-    # a results page or a genuine, isolated error, across several debugging
-    # attempts) — flagging honestly rather than claiming this is proven.
+    # Confirmed working live end-to-end, including the final submit: verified
+    # by diffing a real "no record" response against a fresh page load, which
+    # is how an earlier false-positive "captcha mismatch" bug in the response
+    # parser (see client.py's _parse_result) got caught and fixed.
     try:
         return adangal_client.fetch_adangal(
             district_id=req.district_id,

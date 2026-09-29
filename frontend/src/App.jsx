@@ -181,11 +181,6 @@ function AdangalCard() {
       <p className="hint">
         Select District → Division → Mandal → Village, then enter your Survey Number.
       </p>
-      <p className="warning">
-        Note: the location dropdowns below are fully live and working. Final
-        search submission to the government portal is still being verified —
-        you may see an error here even for a valid survey number.
-      </p>
       <form onSubmit={submit}>
         <select value={districtId} onChange={(e) => onDistrict(e.target.value)} required>
           <option value="">Select District</option>

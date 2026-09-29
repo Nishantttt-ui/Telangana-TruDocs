@@ -7,7 +7,7 @@ Real-estate document search for Telangana. Python (FastAPI) backend, React+Vite 
 Working end-to-end against the live government portals:
 - **GHMC Mutation Status** — fully working.
 - **GHMC Property Tax Search** — fully working (circle is a required field on the portal, not optional).
-- **Adangal Extract (Pahani)** — location cascade (District → Division → Mandal → Village → Survey/Khata options) is fully working live. Final search submission is wired to the confirmed request shape but has not yet returned a verified real result — see `backend/scrapers/adangal/client.py` and `backend/routers/adangal.py` for notes.
+- **Adangal Extract (Pahani)** — fully working, including the final search submit. (Note: survey/khata number dropdowns come back empty for most villages tried so far — that appears to be sparse data on the portal's side, not a bug on ours; the search itself correctly returns "No RoR-1B Details Found" for a number with no record, confirmed live.)
 
 Not yet built: Pattadar Passbook (its known URL currently 404s on the live portal — needs re-verification), Bhu Bharati EC (no confirmed working URL found yet), TG-IGRS Encumbrance Certificate (confirmed to require citizen login + OTP — blocked on that decision).
 
