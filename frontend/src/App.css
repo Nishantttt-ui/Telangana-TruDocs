@@ -24,26 +24,19 @@
   --radius-sm: 10px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #14161a;
-    --nav-bg: #0f2e22;
-    --surface: #1c1f26;
-    --text: #eceae4;
-    --text-muted: #9aa0ab;
-    --border: #2a2e37;
-    --primary: #33a171;
-    --primary-hover: #47b985;
-    --primary-tint: #16261c;
-    --accent-tint: #2a230f;
-    --error-bg: #3a1f1f;
-    --error-text: #ff8a80;
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-    --shadow-md: 0 12px 36px rgba(0, 0, 0, 0.45);
-  }
-}
+/* Intentionally no @media (prefers-color-scheme: dark) override — this
+   product's design (cream background, gold accents) is a fixed light theme,
+   like Karnataka TruDocs' live site, not something that should flip to a
+   dark palette just because the visitor's OS is in dark mode. */
 
 * { box-sizing: border-box; }
+
+html {
+  /* Forces browser-native form control styling (selects, scrollbars) to
+     stay light even when the OS is in dark mode — otherwise some browsers
+     dark-ify those regardless of our own CSS variables above. */
+  color-scheme: light;
+}
 
 body {
   margin: 0;
@@ -63,6 +56,9 @@ body {
   padding: 0 28px;
   height: 60px;
   overflow-x: auto;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .brand {
@@ -161,6 +157,7 @@ body {
   line-height: 1.12;
   margin: 0 0 16px;
   letter-spacing: -0.5px;
+  color: var(--text);
 }
 
 .hero h1 em {
@@ -230,7 +227,11 @@ body {
   grid-template-columns: 0.8fr 1.2fr;
   gap: 48px;
   align-items: start;
+  scroll-margin-top: 76px; /* keeps the section clear of the sticky navbar */
+  border-top: 1px solid var(--border);
 }
+
+.search-section:first-of-type { border-top: none; }
 
 @media (max-width: 800px) {
   .search-section { grid-template-columns: 1fr; }
@@ -273,6 +274,7 @@ body {
   font-weight: 800;
   margin: 0 0 12px;
   letter-spacing: -0.4px;
+  color: var(--text);
 }
 
 .search-intro p {

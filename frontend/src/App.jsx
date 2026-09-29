@@ -313,8 +313,25 @@ function Skyline() {
 
 export default function App() {
   const [activeId, setActiveId] = useState(DOCUMENT_TYPES[0].id)
-  const activeIndex = DOCUMENT_TYPES.findIndex((d) => d.id === activeId)
-  const active = DOCUMENT_TYPES[activeIndex]
+
+  useEffect(() => {
+    const sections = DOCUMENT_TYPES.map((d) => document.getElementById(d.id)).filter(Boolean)
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0]
+        if (visible) setActiveId(visible.target.id)
+      },
+      { rootMargin: '-35% 0px -50% 0px', threshold: [0, 0.25, 0.5, 0.75, 1] }
+    )
+    sections.forEach((s) => observer.observe(s))
+    return () => observer.disconnect()
+  }, [])
+
+  function scrollToSection(id) {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   return (
     <div className="app">
@@ -325,7 +342,7 @@ export default function App() {
             <button
               key={d.id}
               className={`nav-tab${d.id === activeId ? ' active' : ''}`}
-              onClick={() => setActiveId(d.id)}
+              onClick={() => scrollToSection(d.id)}
             >
               <i className={d.icon} /> {d.navLabel}
             </button>
@@ -364,25 +381,27 @@ export default function App() {
             <span className="label">Districts Covered</span>
           </div>
           <div className="stat">
-            <span className="num">2026</span>
-            <span className="label">Live Since</span>
+            <span className="num">12,777</span>
+            <span className="label">Villages Statewide</span>
           </div>
         </div>
 
         <Skyline />
       </div>
 
-      <div className="search-section">
-        <div className="search-intro">
-          <span className="index">{String(activeIndex + 1).padStart(2, '0')}</span>
-          <span className="pill">{active.tag}</span>
-          <h2>{active.heading}</h2>
-          <p>{active.description}</p>
+      {DOCUMENT_TYPES.map((d, i) => (
+        <div className="search-section" id={d.id} key={d.id}>
+          <div className="search-intro">
+            <span className="index">{String(i + 1).padStart(2, '0')}</span>
+            <span className="pill">{d.tag}</span>
+            <h2>{d.heading}</h2>
+            <p>{d.description}</p>
+          </div>
+          <div className="form-card">
+            <d.Form />
+          </div>
         </div>
-        <div className="form-card">
-          <active.Form key={active.id} />
-        </div>
-      </div>
+      ))}
     </div>
   )
 }
