@@ -101,16 +101,70 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .result {
   margin-top: 14px;
-  padding: 12px;
+  padding: 14px 16px;
   border-radius: 8px;
   background: #f0fdf4;
-  font-size: 13px;
+  font-size: 14px;
   overflow-x: auto;
 }
 
 .result.error {
   background: var(--error-bg);
   color: var(--error-text);
+}
+
+.result-status {
+  margin: 0 0 10px;
+  font-weight: 600;
+}
+
+.result-status.found {
+  color: var(--primary);
+}
+
+.result-status.not-found {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.field-list {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 16px;
+}
+
+.field-row {
+  display: contents;
+}
+
+.field-list dt {
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.field-list dd {
+  margin: 0;
+  font-weight: 500;
+}
+
+.portal-table-wrapper {
+  background: #ffffff;
+  color: #111111;
+  padding: 12px;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-size: 13px;
+}
+
+.portal-table-wrapper table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+@media (prefers-color-scheme: dark) {
+  .result.success { background: #16261c; }
 }
 
 @media (prefers-color-scheme: dark) {

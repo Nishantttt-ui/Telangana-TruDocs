@@ -21,10 +21,63 @@ function useApi() {
   return { post, get }
 }
 
+// A handful of field names we've confirmed live (GHMC's ASP.NET label IDs
+// are cryptic, e.g. "grd_SearchResult_lblowner_0") — give these a proper
+// human label; fall back to a generic prettifier for anything unmapped.
+const KNOWN_FIELD_LABELS = {
+  ptinno: 'PTIN Number',
+  owner: 'Owner Name',
+  door: 'Door Number',
+  assessmentnum: 'Assessment Number',
+}
+
+function fieldLabel(key) {
+  const stripped = key
+    .replace(/^(grd_SearchResult_|ContentPlaceHolder1_)/i, '')
+    .replace(/^lbl/i, '')
+    .replace(/_\d+$/, '')
+  const known = KNOWN_FIELD_LABELS[stripped.toLowerCase()]
+  if (known) return known
+  const spaced = stripped.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').trim()
+  return spaced ? spaced.charAt(0).toUpperCase() + spaced.slice(1) : key
+}
+
 function ResultBox({ error, result }) {
   if (error) return <div className="result error">{error}</div>
-  if (result) return <pre className="result">{JSON.stringify(result, null, 2)}</pre>
-  return null
+  if (!result) return null
+
+  const fields = result.raw_fields && Object.entries(result.raw_fields)
+  const tables = result.raw_tables_html
+  const notFoundMessage = result.not_found_messages?.[0]
+
+  return (
+    <div className="result success">
+      {result.found ? (
+        <p className="result-status found">✓ Record found</p>
+      ) : (
+        <p className="result-status not-found">{notFoundMessage || 'No record found.'}</p>
+      )}
+
+      {result.found && fields && fields.length > 0 && (
+        <dl className="field-list">
+          {fields.map(([key, value]) => (
+            <div className="field-row" key={key}>
+              <dt>{fieldLabel(key)}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+
+      {result.found && tables && tables.length > 0 && (
+        <div className="portal-table-wrapper">
+          {tables.map((html, i) => (
+            <div key={i} dangerouslySetInnerHTML={{ __html: html }} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function MutationCard() {
