@@ -80,7 +80,7 @@ function ResultBox({ error, result }) {
   )
 }
 
-function MutationCard() {
+function MutationForm() {
   const { post } = useApi()
   const [assessmentNumber, setAssessmentNumber] = useState('')
   const [result, setResult] = useState(null)
@@ -102,8 +102,7 @@ function MutationCard() {
   }
 
   return (
-    <section className="card">
-      <h2>GHMC Mutation Status</h2>
+    <>
       <p className="hint">Enter your Assessment / PTIN number.</p>
       <form onSubmit={submit}>
         <input
@@ -115,11 +114,11 @@ function MutationCard() {
         <button type="submit" disabled={loading}>{loading ? 'Checking…' : 'Check Status'}</button>
       </form>
       <ResultBox error={error} result={result} />
-    </section>
+    </>
   )
 }
 
-function PropertyTaxCard() {
+function PropertyTaxForm() {
   const { post, get } = useApi()
   const [circles, setCircles] = useState([])
   const [circle, setCircle] = useState('')
@@ -147,8 +146,7 @@ function PropertyTaxCard() {
   }
 
   return (
-    <section className="card">
-      <h2>GHMC Property Tax</h2>
+    <>
       <p className="hint">Select your Circle and enter your PTIN number.</p>
       <form onSubmit={submit}>
         <select value={circle} onChange={(e) => setCircle(e.target.value)} required>
@@ -161,11 +159,11 @@ function PropertyTaxCard() {
         <button type="submit" disabled={loading}>{loading ? 'Checking…' : 'Check Tax Status'}</button>
       </form>
       <ResultBox error={error} result={result} />
-    </section>
+    </>
   )
 }
 
-function AdangalCard() {
+function AdangalForm() {
   const { post, get } = useApi()
   const [districts, setDistricts] = useState([])
   const [divisions, setDivisions] = useState([])
@@ -229,11 +227,8 @@ function AdangalCard() {
   }
 
   return (
-    <section className="card">
-      <h2>Adangal Extract (Pahani)</h2>
-      <p className="hint">
-        Select District → Division → Mandal → Village, then enter your Survey Number.
-      </p>
+    <>
+      <p className="hint">Select District → Division → Mandal → Village, then enter your Survey Number.</p>
       <form onSubmit={submit}>
         <select value={districtId} onChange={(e) => onDistrict(e.target.value)} required>
           <option value="">Select District</option>
@@ -255,22 +250,82 @@ function AdangalCard() {
         <button type="submit" disabled={loading}>{loading ? 'Searching…' : 'Get Adangal'}</button>
       </form>
       <ResultBox error={error} result={result} />
-    </section>
+    </>
   )
 }
 
+const DOCUMENT_TYPES = [
+  {
+    id: 'ghmc-mutation',
+    icon: 'ti ti-home-2',
+    name: 'GHMC Mutation Status',
+    desc: 'Check the latest ownership mutation status for a Hyderabad property by assessment number.',
+    tag: 'Municipality',
+    Form: MutationForm,
+  },
+  {
+    id: 'ghmc-property-tax',
+    icon: 'ti ti-receipt',
+    name: 'GHMC Property Tax',
+    desc: 'Search property tax records by PTIN, owner name, or door number.',
+    tag: 'Municipality',
+    Form: PropertyTaxForm,
+  },
+  {
+    id: 'adangal',
+    icon: 'ti ti-map-2',
+    name: 'Adangal Extract (Pahani)',
+    desc: 'Land ownership, cultivation, and usage record for agricultural land, by village and survey number.',
+    tag: 'Revenue dept',
+    Form: AdangalForm,
+  },
+]
+
 export default function App() {
+  const [activeId, setActiveId] = useState(null)
+  const active = DOCUMENT_TYPES.find((d) => d.id === activeId)
+
   return (
     <div className="app">
-      <header>
-        <h1>Telangana TruDocs</h1>
-        <p>Real-estate document search for Telangana</p>
-      </header>
-      <main>
-        <MutationCard />
-        <PropertyTaxCard />
-        <AdangalCard />
-      </main>
+      <div className="topbar">
+        <div className="brand">
+          <i className="ti ti-file-certificate" />
+          Telangana TruDocs
+        </div>
+        <span className="brand-sub">Beta</span>
+      </div>
+
+      {!active && (
+        <div className="hero">
+          <h1>Telangana's property records engine.</h1>
+          <p>Search official land, tax, and mutation records — verified straight from the source.</p>
+        </div>
+      )}
+
+      {!active ? (
+        <div className="explore">
+          {DOCUMENT_TYPES.map((d) => (
+            <button key={d.id} className="explore-card" onClick={() => setActiveId(d.id)}>
+              <div className="icon"><i className={d.icon} /></div>
+              <h3>{d.name}</h3>
+              <p>{d.desc}</p>
+              <span className="tag">{d.tag}</span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="panel-wrap">
+          <div className="panel">
+            <div className="panel-header">
+              <h2>{active.name}</h2>
+              <button className="back-btn" onClick={() => setActiveId(null)} aria-label="Back">
+                <i className="ti ti-x" />
+              </button>
+            </div>
+            <active.Form />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
