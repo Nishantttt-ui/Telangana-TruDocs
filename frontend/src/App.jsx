@@ -270,6 +270,114 @@ function AdangalForm() {
   )
 }
 
+function PattadarForm() {
+  const { post, get } = useApi()
+  const [districts, setDistricts] = useState([])
+  const [mandals, setMandals] = useState([])
+  const [villages, setVillages] = useState([])
+  const [surveyOptions, setSurveyOptions] = useState([])
+  const [khataOptions, setKhataOptions] = useState([])
+  const [districtId, setDistrictId] = useState('')
+  const [mandalId, setMandalId] = useState('')
+  const [villageId, setVillageId] = useState('')
+  const [surveyNo, setSurveyNo] = useState('')
+  const [khataId, setKhataId] = useState('')
+  const [result, setResult] = useState(null)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    get('/api/pattadar/districts').then(setDistricts).catch(() => {})
+  }, [])
+
+  async function onDistrict(id) {
+    setDistrictId(id)
+    setMandals([]); setVillages([]); setSurveyOptions([]); setKhataOptions([])
+    setMandalId(''); setVillageId(''); setSurveyNo(''); setKhataId('')
+    if (id) setMandals(await get(`/api/pattadar/mandals/${id}`))
+  }
+
+  async function onMandal(id) {
+    setMandalId(id)
+    setVillages([]); setSurveyOptions([]); setKhataOptions([])
+    setVillageId(''); setSurveyNo(''); setKhataId('')
+    if (id) setVillages(await get(`/api/pattadar/villages/${id}`))
+  }
+
+  async function onVillage(id) {
+    setVillageId(id)
+    setSurveyOptions([]); setKhataOptions([])
+    setSurveyNo(''); setKhataId('')
+    if (id) setSurveyOptions(await get(`/api/pattadar/survey-options/${id}`))
+  }
+
+  async function onSurvey(value) {
+    setSurveyNo(value)
+    setKhataOptions([])
+    setKhataId('')
+    if (value) setKhataOptions(await get(`/api/pattadar/khata-options/${villageId}?survey_no=${encodeURIComponent(value)}`))
+  }
+
+  async function submit(e) {
+    e.preventDefault()
+    setError('')
+    setResult(null)
+    setLoading(true)
+    try {
+      setResult(
+        await post('/api/pattadar/search', {
+          district_id: districtId,
+          mandal_id: mandalId,
+          village_id: villageId,
+          survey_no: surveyNo,
+          khata_id: khataId,
+        })
+      )
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <form onSubmit={submit}>
+      <Field label="District" required>
+        <select value={districtId} onChange={(e) => onDistrict(e.target.value)} required>
+          <option value="">Select District</option>
+          {districts.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+        </select>
+      </Field>
+      <Field label="Mandal" required>
+        <select value={mandalId} onChange={(e) => onMandal(e.target.value)} disabled={!districtId} required>
+          <option value="">Select Mandal</option>
+          {mandals.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+        </select>
+      </Field>
+      <Field label="Village" required>
+        <select value={villageId} onChange={(e) => onVillage(e.target.value)} disabled={!mandalId} required>
+          <option value="">Select Village</option>
+          {villages.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
+        </select>
+      </Field>
+      <Field label="Survey No. / Sub-Division No." required>
+        <select value={surveyNo} onChange={(e) => onSurvey(e.target.value)} disabled={!villageId} required>
+          <option value="">Select Survey Number</option>
+          {surveyOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+        </select>
+      </Field>
+      <Field label="Khata Number" required>
+        <select value={khataId} onChange={(e) => setKhataId(e.target.value)} disabled={!surveyNo} required>
+          <option value="">Select Khata Number</option>
+          {khataOptions.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
+        </select>
+      </Field>
+      <button type="submit" disabled={loading}>{loading ? 'Fetching…' : 'Fetch Pattadar Details'}</button>
+      <ResultBox error={error} result={result} />
+    </form>
+  )
+}
+
 const DOCUMENT_TYPES = [
   {
     id: 'ghmc-mutation',
@@ -288,6 +396,15 @@ const DOCUMENT_TYPES = [
     heading: 'GHMC Property Tax',
     description: 'Search property tax records by PTIN, owner name, or door number, within a circle.',
     Form: PropertyTaxForm,
+  },
+  {
+    id: 'pattadar-passbook',
+    icon: 'ti ti-id-badge-2',
+    navLabel: 'Pattadar Passbook',
+    tag: 'Revenue dept',
+    heading: 'Pattadar Passbook',
+    description: 'Land ownership and passbook details, by district, mandal, village, survey and khata number.',
+    Form: PattadarForm,
   },
   {
     id: 'adangal',
@@ -373,7 +490,7 @@ export default function App() {
 
         <div className="stat-bar">
           <div className="stat">
-            <span className="num">3</span>
+            <span className="num">4</span>
             <span className="label">Live Document Types</span>
           </div>
           <div className="stat">
