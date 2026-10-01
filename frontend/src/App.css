@@ -224,7 +224,12 @@ body {
   margin: 0 auto;
   padding: 56px 20px 80px;
   display: grid;
-  grid-template-columns: 0.8fr 1.2fr;
+  /* minmax(0, Nfr), not just Nfr — without the explicit 0 floor, a grid
+     track won't shrink below its content's min-content size. A <select>
+     holding long unbroken Telugu option text (e.g. district/village names)
+     was forcing this column wider than its fr share, pushing the form card
+     off the right edge of the viewport. */
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
   gap: 48px;
   align-items: start;
   scroll-margin-top: 76px; /* keeps the section clear of the sticky navbar */
@@ -290,6 +295,7 @@ body {
   border-top: 3px solid var(--accent);
   box-shadow: var(--shadow-md);
   padding: 28px;
+  min-width: 0; /* belt-and-suspenders alongside the grid-track fix above */
 }
 
 .field {
