@@ -21,6 +21,7 @@ real captured browser session's request/response pair, not guessed):
 """
 import random
 import re
+from functools import lru_cache
 
 import httpx
 from Crypto.Cipher import AES
@@ -81,6 +82,17 @@ def _find_options(html: str) -> list:
     return results
 
 
+# Districts/Mandals/Villages are government administrative boundaries — they
+# don't change while this process is running, and are shared across every
+# user. Caching them turns "every dropdown click re-hits the government
+# server" into "the first click anyone makes populates it for everyone after,
+# instantly" — the real fix for the cascade feeling slow, since each live
+# call is a full round-trip to a Java/Spring server on the other side of
+# India. Survey/khata numbers are also cached per (village[, survey]) since
+# those are likewise static once published, just far more numerous.
+
+
+@lru_cache(maxsize=1)
 def fetch_districts() -> list:
     with _client() as client:
         html = _get(client, LANDING_PATH).text
@@ -88,6 +100,7 @@ def fetch_districts() -> list:
     return _find_options(m.group(1)) if m else []
 
 
+@lru_cache(maxsize=64)
 def fetch_mandals(district_id: str) -> list:
     with _client() as client:
         _get(client, LANDING_PATH)
@@ -95,6 +108,7 @@ def fetch_mandals(district_id: str) -> list:
     return _find_options(resp.text)
 
 
+@lru_cache(maxsize=1024)
 def fetch_villages(mandal_id: str) -> list:
     with _client() as client:
         _get(client, LANDING_PATH)
@@ -102,6 +116,7 @@ def fetch_villages(mandal_id: str) -> list:
     return _find_options(resp.text)
 
 
+@lru_cache(maxsize=4096)
 def fetch_survey_options(village_id: str) -> list:
     with _client() as client:
         _get(client, LANDING_PATH)
@@ -109,6 +124,7 @@ def fetch_survey_options(village_id: str) -> list:
     return _find_options(resp.text)
 
 
+@lru_cache(maxsize=8192)
 def fetch_khata_options(village_id: str, survey_no: str) -> list:
     with _client() as client:
         _get(client, LANDING_PATH)

@@ -320,9 +320,24 @@ input, select {
   border-radius: var(--radius-sm);
   font-size: 14px;
   width: 100%;
+  min-width: 0; /* a <select> can otherwise refuse to shrink below its
+    widest OPTION's intrinsic content size, regardless of width:100% —
+    this bit the long bilingual Telugu district/village names specifically */
+  max-width: 100%;
+  box-sizing: border-box;
   background: var(--bg);
   color: var(--text);
   font-family: inherit;
+}
+
+/* The closed <select> box truncates long selected text with an ellipsis
+   instead of forcing the box (and its grid column) wider. The open
+   dropdown's option list is a native browser overlay and is unaffected —
+   it still shows full option text. */
+select {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 input:focus, select:focus {

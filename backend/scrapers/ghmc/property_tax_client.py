@@ -10,6 +10,7 @@ Number + Circle. Circle list (61) is static/server-rendered — no scrape
 needed, hand-seed from the confirmed page HTML.
 """
 import re
+from functools import lru_cache
 
 import httpx
 
@@ -33,17 +34,31 @@ def _extract_hidden_fields(html: str) -> dict:
     return fields
 
 
-def fetch_circles(html: str = None) -> list:
-    """Parse the static circle dropdown. Pass cached HTML, or None to fetch fresh."""
-    if html is None:
-        with httpx.Client(headers={"User-Agent": USER_AGENT}, timeout=20.0) as client:
-            _throttle.wait()
-            html = client.get(BASE_URL + PAGE_PATH).text
+def _parse_circles(html: str) -> list:
     match = re.search(r'<select name="ctl00\$ContentPlaceHolder1\$ddlcircle"[^>]*>(.*?)</select>', html, re.S)
     if not match:
         return []
     options = re.findall(r'<option value="([^"]*)"[^>]*>([^<]*)</option>', match.group(1))
     return [{"value": v, "label": t.strip()} for v, t in options if v]
+
+
+@lru_cache(maxsize=1)
+def _fetch_circles_cached() -> list:
+    # GHMC's 61 municipal circles are static — never change at runtime, and
+    # are the same for every user, so cache rather than re-fetch the whole
+    # Search.aspx page on every request just to read this one dropdown.
+    with httpx.Client(headers={"User-Agent": USER_AGENT}, timeout=20.0) as client:
+        _throttle.wait()
+        html = client.get(BASE_URL + PAGE_PATH).text
+    return _parse_circles(html)
+
+
+def fetch_circles(html: str = None) -> list:
+    """Parse the static circle dropdown. Pass cached HTML, or None to use the
+    cached live fetch."""
+    if html is not None:
+        return _parse_circles(html)
+    return _fetch_circles_cached()
 
 
 def fetch_property_tax(*, ptin: str = "", owner_name: str = "", door_no: str = "", circle: str = "") -> dict:

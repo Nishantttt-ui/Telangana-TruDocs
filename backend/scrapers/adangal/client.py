@@ -14,6 +14,7 @@ Confirmed live (2026-09-29) by reading the actual page source and JS:
   requires replaying that full form post, not calling a JSON endpoint.
 """
 import re
+from functools import lru_cache
 
 import httpx
 
@@ -83,12 +84,22 @@ def _options(html: str, select_name: str) -> list:
     return _find_options(m.group(1))
 
 
+# Districts/Divisions/Mandals/Villages are government administrative
+# boundaries — static for the life of this process and shared across every
+# user, so caching them means only the first-ever lookup pays the real
+# round-trip cost to CCLA's server; every repeat (by anyone) is instant.
+# This is the actual fix for the cascade feeling slow, not something tunable
+# client-side.
+
+
+@lru_cache(maxsize=1)
 def fetch_districts() -> list:
     with _client() as client:
         html = _get(client, LANDING_PATH).text
     return _options(html, "userProperties(district_id)")
 
 
+@lru_cache(maxsize=64)
 def fetch_divisions(district_id: str) -> list:
     # Confirmed live: params travel as a query string, not a POST body — the
     # site's own JS builds `landStatus.do?method=getDivisions&district_id=...`.
@@ -98,6 +109,7 @@ def fetch_divisions(district_id: str) -> list:
     return _parse_ajax_options(resp.text)
 
 
+@lru_cache(maxsize=256)
 def fetch_mandals(district_id: str, division_id: str) -> list:
     with _client() as client:
         _get(client, LANDING_PATH)
@@ -109,6 +121,7 @@ def fetch_mandals(district_id: str, division_id: str) -> list:
     return _parse_ajax_options(resp.text)
 
 
+@lru_cache(maxsize=4096)
 def fetch_villages(district_id: str, mandal_id: str) -> list:
     with _client() as client:
         _get(client, LANDING_PATH)
@@ -125,6 +138,7 @@ def _parse_ajax_options(text: str) -> list:
     return _find_options(text)
 
 
+@lru_cache(maxsize=8192)
 def fetch_survey_options(village_id: str, option: str = "surveyNo") -> list:
     """`option` is "surveyNo", "khataNo", or "pattadarNo" — matches the
     portal's own toggle. Confirmed live: this endpoint (the currently-active
