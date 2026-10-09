@@ -1,0 +1,53 @@
+# syntax=docker/dockerfile:1
+# TruDocs state image — HTTP-only tools (no browser). Small, fast cold start, cheap per request.
+# Use Dockerfile.playwright instead ONLY if the portal analysis (SKILL.md §3) chose a real browser.
+#
+# Expected repo layout (build context = repo root):
+#   backend/            main.py, kit/, tools/
+#   frontend-v2/        the shell (package.json, src/, public/ ...)
+#   covers/             covers.json + cover PDFs   (the folder must exist — add a .gitkeep if empty)
+#   requirements.txt
+#
+#   docker build -f Dockerfile.http -t trudocs-<state> .
+#   docker run --rm -p 8080:8080 -e SKIP_STARTUP=1 trudocs-<state>
+
+# ── 1. build the React app (so dist/ never has to be committed) ─────────────
+FROM node:20-slim AS web
+WORKDIR /web
+COPY frontend-v2/package.json frontend-v2/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY frontend-v2/ ./
+RUN npm run build
+
+# ── 2. runtime ──────────────────────────────────────────────────────────────
+FROM python:3.11-slim
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PORT=8080 \
+    WEB_CONCURRENCY=1 \
+    FRONTEND_DIST=/app/frontend-v2/dist
+# WEB_CONCURRENCY=1: uvicorn starts that many worker PROCESSES. Captcha sessions, jobs and the
+#   default rate-limit counters live in process memory, so >1 breaks them (SKILL.md §11).
+#   Scale with ASYNC concurrency inside one worker, then with sticky/shared-state instances.
+# TRUST_PROXY_HOPS: deliberately NOT set. Behind a load balancer set it to the number of
+#   trusted proxies (usually 1) and verify at /api/health. Don't add
+#   --forwarded-allow-ips='*' to uvicorn: it makes request.client the client-controlled
+#   leftmost X-Forwarded-For entry.
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+COPY backend ./backend
+COPY covers ./covers
+COPY --from=web /web/dist ./frontend-v2/dist
+
+RUN useradd --system --create-home --uid 10001 app && chown -R app:app /app
+USER app
+
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD python -c "import os,sys,urllib.request as u; sys.exit(0 if u.urlopen('http://127.0.0.1:%s/api/ready' % os.environ['PORT'], timeout=4).status == 200 else 1)"
+
+CMD ["sh", "-c", "exec uvicorn backend.main:app --host 0.0.0.0 --port ${PORT}"]

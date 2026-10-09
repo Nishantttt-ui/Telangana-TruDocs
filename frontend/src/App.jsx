@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import './App.css'
 
+// ---------- shared API hook ----------
 function useApi() {
   async function post(path, body) {
     const res = await fetch(path, {
@@ -21,9 +22,29 @@ function useApi() {
   return { post, get }
 }
 
-// A handful of field names we've confirmed live (GHMC's ASP.NET label IDs
-// are cryptic, e.g. "grd_SearchResult_lblowner_0") — give these a proper
-// human label; fall back to a generic prettifier for anything unmapped.
+// Shared loading/error/result state for every form — removes repeated boilerplate.
+function useFormState() {
+  const [result, setResult] = useState(null)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  async function run(fn) {
+    setError('')
+    setResult(null)
+    setLoading(true)
+    try {
+      setResult(await fn())
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return { result, error, loading, run, setError }
+}
+
+// ---------- field label prettifier ----------
 const KNOWN_FIELD_LABELS = {
   ptinno: 'PTIN Number',
   owner: 'Owner Name',
@@ -42,8 +63,16 @@ function fieldLabel(key) {
   return spaced ? spaced.charAt(0).toUpperCase() + spaced.slice(1) : key
 }
 
+// ---------- reusable components ----------
 function ResultBox({ error, result }) {
-  if (error) return <div className="result error">{error}</div>
+  if (error) {
+    return (
+      <div className="result error">
+        <span className="result-icon">✕</span>
+        <span>{error}</span>
+      </div>
+    )
+  }
   if (!result) return null
 
   const fields = result.raw_fields && Object.entries(result.raw_fields)
@@ -53,7 +82,9 @@ function ResultBox({ error, result }) {
   return (
     <div className="result success">
       {result.found ? (
-        <p className="result-status found">✓ Record found</p>
+        <p className="result-status found">
+          <span className="result-icon">✓</span> Record found
+        </p>
       ) : (
         <p className="result-status not-found">{notFoundMessage || 'No record found.'}</p>
       )}
@@ -80,47 +111,152 @@ function ResultBox({ error, result }) {
   )
 }
 
-function Field({ label, required, children }) {
+function Field({ label, required, hint, children }) {
   return (
     <div className="field">
-      <label>{label}{required && <span className="req">*</span>}</label>
+      <label>
+        {label}{required && <span className="req">*</span>}
+        {hint && <span className="field-hint">{hint}</span>}
+      </label>
       {children}
     </div>
   )
 }
 
-function MutationForm() {
-  const { post } = useApi()
-  const [assessmentNumber, setAssessmentNumber] = useState('')
-  const [result, setResult] = useState(null)
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+// Select with inline loading spinner — used while survey/khata options are
+// being fetched from the government portal.
+function SelectLoading({ loading, children, ...props }) {
+  return (
+    <div className="select-wrap">
+      <select {...props} disabled={props.disabled || loading}>{children}</select>
+      {loading && <span className="select-spinner" />}
+    </div>
+  )
+}
 
-  async function submit(e) {
-    e.preventDefault()
-    setError('')
-    setResult(null)
-    setLoading(true)
-    try {
-      setResult(await post('/api/ghmc/mutation', { assessment_number: assessmentNumber }))
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
+// Village typeahead — single input that searches the pre-scraped hierarchy.
+// All four IDs (district, division, mandal, village) are returned to the
+// parent via onSelect so the final search call has everything it needs.
+function VillageSearch({ portal, onSelect }) {
+  const { get } = useApi()
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState([])
+  const [showDrop, setShowDrop] = useState(false)
+  const [selected, setSelected] = useState(null)
+  const [searching, setSearching] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    function handler(e) {
+      if (ref.current && !ref.current.contains(e.target)) setShowDrop(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  useEffect(() => {
+    if (selected) return
+    if (query.length < 2) { setResults([]); setShowDrop(false); return }
+    setSearching(true)
+    const t = setTimeout(async () => {
+      try {
+        const data = await get(`/api/${portal}/villages/search?q=${encodeURIComponent(query)}`)
+        setResults(data)
+        setShowDrop(true)
+      } catch {}
+      finally { setSearching(false) }
+    }, 300)
+    return () => { clearTimeout(t); setSearching(false) }
+  }, [query, portal, selected])
+
+  function pick(v) {
+    setSelected(v)
+    setQuery(`${v.village} — ${v.mandal}, ${v.district}`)
+    setResults([])
+    setShowDrop(false)
+    onSelect(v)
+  }
+
+  function clear(e) {
+    if (selected) {
+      setSelected(null)
+      onSelect(null)
+      setQuery('')
+      setResults([])
+      setShowDrop(false)
+    } else {
+      setQuery(e.target.value)
+      onSelect(null)
     }
   }
 
+  function clearAll() {
+    setSelected(null)
+    onSelect(null)
+    setQuery('')
+    setResults([])
+    setShowDrop(false)
+  }
+
   return (
-    <form onSubmit={submit}>
-      <Field label="Assessment Number" required>
+    <div className="village-search" ref={ref}>
+      <div className="village-input-wrap">
+        <i className="ti ti-map-pin village-search-icon" />
         <input
-          placeholder="e.g. 1010133899"
+          type="text"
+          value={query}
+          onChange={clear}
+          onFocus={() => { if (results.length > 0) setShowDrop(true) }}
+          placeholder="Type village name…"
+          autoComplete="off"
+        />
+        {searching && <span className="village-spinner" />}
+        {(query && !searching) && (
+          <button type="button" className="village-clear" onClick={clearAll} tabIndex={-1}>
+            <i className="ti ti-x" />
+          </button>
+        )}
+      </div>
+      {showDrop && (
+        <div className="village-dropdown">
+          {results.length > 0 ? results.map((v, i) => (
+            <button
+              key={i}
+              type="button"
+              className="village-option"
+              onMouseDown={(e) => { e.preventDefault(); pick(v) }}
+            >
+              <span className="v-name"><i className="ti ti-home-2" /> {v.village}</span>
+              <span className="v-meta">{v.mandal} &middot; {v.district}</span>
+            </button>
+          )) : (
+            <div className="village-no-results">No villages found for "{query}"</div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------- document forms ----------
+function MutationForm() {
+  const { post } = useApi()
+  const { result, error, loading, run } = useFormState()
+  const [assessmentNumber, setAssessmentNumber] = useState('')
+
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); run(() => post('/api/ghmc/mutation', { assessment_number: assessmentNumber })) }}>
+      <Field label="Assessment Number" required hint="e.g. 1010133899">
+        <input
+          placeholder="Enter assessment number"
           value={assessmentNumber}
           onChange={(e) => setAssessmentNumber(e.target.value)}
           required
         />
       </Field>
-      <button type="submit" disabled={loading}>{loading ? 'Checking…' : 'Check Status'}</button>
+      <button type="submit" disabled={loading} className={loading ? 'btn-loading' : ''}>
+        {loading ? <><span className="btn-spinner" /> Checking…</> : 'Check Mutation Status'}
+      </button>
       <ResultBox error={error} result={result} />
     </form>
   )
@@ -128,33 +264,17 @@ function MutationForm() {
 
 function PropertyTaxForm() {
   const { post, get } = useApi()
+  const { result, error, loading, run } = useFormState()
   const [circles, setCircles] = useState([])
   const [circle, setCircle] = useState('')
   const [ptin, setPtin] = useState('')
-  const [result, setResult] = useState(null)
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     get('/api/ghmc/circles').then(setCircles).catch(() => {})
   }, [])
 
-  async function submit(e) {
-    e.preventDefault()
-    setError('')
-    setResult(null)
-    setLoading(true)
-    try {
-      setResult(await post('/api/ghmc/property-tax', { circle, ptin }))
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
   return (
-    <form onSubmit={submit}>
+    <form onSubmit={(e) => { e.preventDefault(); run(() => post('/api/ghmc/property-tax', { circle, ptin })) }}>
       <Field label="Circle" required>
         <select value={circle} onChange={(e) => setCircle(e.target.value)} required>
           <option value="">Select Circle</option>
@@ -163,108 +283,12 @@ function PropertyTaxForm() {
           ))}
         </select>
       </Field>
-      <Field label="PTIN Number" required>
+      <Field label="PTIN Number" required hint="Property Tax Identification Number">
         <input placeholder="e.g. 1010133899" value={ptin} onChange={(e) => setPtin(e.target.value)} required />
       </Field>
-      <button type="submit" disabled={loading}>{loading ? 'Checking…' : 'Check Tax Status'}</button>
-      <ResultBox error={error} result={result} />
-    </form>
-  )
-}
-
-function AdangalForm() {
-  const { post, get } = useApi()
-  const [districts, setDistricts] = useState([])
-  const [divisions, setDivisions] = useState([])
-  const [mandals, setMandals] = useState([])
-  const [villages, setVillages] = useState([])
-  const [districtId, setDistrictId] = useState('')
-  const [divisionId, setDivisionId] = useState('')
-  const [mandalId, setMandalId] = useState('')
-  const [villageId, setVillageId] = useState('')
-  const [surveyNo, setSurveyNo] = useState('')
-  const [result, setResult] = useState(null)
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    get('/api/adangal/districts').then(setDistricts).catch(() => {})
-  }, [])
-
-  async function onDistrict(id) {
-    setDistrictId(id)
-    setDivisions([]); setMandals([]); setVillages([])
-    setDivisionId(''); setMandalId(''); setVillageId('')
-    if (id) setDivisions(await get(`/api/adangal/divisions/${id}`))
-  }
-
-  async function onDivision(id) {
-    setDivisionId(id)
-    setMandals([]); setVillages([])
-    setMandalId(''); setVillageId('')
-    if (id) setMandals(await get(`/api/adangal/mandals/${districtId}/${id}`))
-  }
-
-  async function onMandal(id) {
-    setMandalId(id)
-    setVillages([])
-    setVillageId('')
-    if (id) setVillages(await get(`/api/adangal/villages/${districtId}/${id}`))
-  }
-
-  async function submit(e) {
-    e.preventDefault()
-    setError('')
-    setResult(null)
-    setLoading(true)
-    try {
-      setResult(
-        await post('/api/adangal/search', {
-          district_id: districtId,
-          division_id: divisionId,
-          mandal_id: mandalId,
-          village_id: villageId,
-          survey_or_khata_value: surveyNo,
-          option: 'surveyNo',
-        })
-      )
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <form onSubmit={submit}>
-      <Field label="District" required>
-        <select value={districtId} onChange={(e) => onDistrict(e.target.value)} required>
-          <option value="">Select District</option>
-          {districts.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
-        </select>
-      </Field>
-      <Field label="Division" required>
-        <select value={divisionId} onChange={(e) => onDivision(e.target.value)} disabled={!districtId} required>
-          <option value="">Select Division</option>
-          {divisions.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
-        </select>
-      </Field>
-      <Field label="Mandal" required>
-        <select value={mandalId} onChange={(e) => onMandal(e.target.value)} disabled={!divisionId} required>
-          <option value="">Select Mandal</option>
-          {mandals.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-        </select>
-      </Field>
-      <Field label="Village" required>
-        <select value={villageId} onChange={(e) => setVillageId(e.target.value)} disabled={!mandalId} required>
-          <option value="">Select Village</option>
-          {villages.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
-        </select>
-      </Field>
-      <Field label="Survey Number" required>
-        <input placeholder="e.g. 123" value={surveyNo} onChange={(e) => setSurveyNo(e.target.value)} required />
-      </Field>
-      <button type="submit" disabled={loading}>{loading ? 'Searching…' : 'Get Adangal'}</button>
+      <button type="submit" disabled={loading} className={loading ? 'btn-loading' : ''}>
+        {loading ? <><span className="btn-spinner" /> Checking…</> : 'Check Tax Status'}
+      </button>
       <ResultBox error={error} result={result} />
     </form>
   )
@@ -272,112 +296,155 @@ function AdangalForm() {
 
 function PattadarForm() {
   const { post, get } = useApi()
-  const [districts, setDistricts] = useState([])
-  const [mandals, setMandals] = useState([])
-  const [villages, setVillages] = useState([])
+  const { result, error, loading, run, setError } = useFormState()
+  const [village, setVillage] = useState(null)
   const [surveyOptions, setSurveyOptions] = useState([])
   const [khataOptions, setKhataOptions] = useState([])
-  const [districtId, setDistrictId] = useState('')
-  const [mandalId, setMandalId] = useState('')
-  const [villageId, setVillageId] = useState('')
   const [surveyNo, setSurveyNo] = useState('')
   const [khataId, setKhataId] = useState('')
-  const [result, setResult] = useState(null)
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [surveyLoading, setSurveyLoading] = useState(false)
+  const [khataLoading, setKhataLoading] = useState(false)
 
-  useEffect(() => {
-    get('/api/pattadar/districts').then(setDistricts).catch(() => {})
-  }, [])
-
-  async function onDistrict(id) {
-    setDistrictId(id)
-    setMandals([]); setVillages([]); setSurveyOptions([]); setKhataOptions([])
-    setMandalId(''); setVillageId(''); setSurveyNo(''); setKhataId('')
-    if (id) setMandals(await get(`/api/pattadar/mandals/${id}`))
-  }
-
-  async function onMandal(id) {
-    setMandalId(id)
-    setVillages([]); setSurveyOptions([]); setKhataOptions([])
-    setVillageId(''); setSurveyNo(''); setKhataId('')
-    if (id) setVillages(await get(`/api/pattadar/villages/${id}`))
-  }
-
-  async function onVillage(id) {
-    setVillageId(id)
+  async function onVillage(v) {
+    setVillage(v)
     setSurveyOptions([]); setKhataOptions([])
     setSurveyNo(''); setKhataId('')
-    if (id) setSurveyOptions(await get(`/api/pattadar/survey-options/${id}`))
+    if (v) {
+      setSurveyLoading(true)
+      try { setSurveyOptions(await get(`/api/pattadar/survey-options/${v.village_id}`)) }
+      catch {}
+      finally { setSurveyLoading(false) }
+    }
   }
 
   async function onSurvey(value) {
     setSurveyNo(value)
-    setKhataOptions([])
-    setKhataId('')
-    if (value) setKhataOptions(await get(`/api/pattadar/khata-options/${villageId}?survey_no=${encodeURIComponent(value)}`))
+    setKhataOptions([]); setKhataId('')
+    if (value && village) {
+      setKhataLoading(true)
+      try { setKhataOptions(await get(`/api/pattadar/khata-options/${village.village_id}?survey_no=${encodeURIComponent(value)}`)) }
+      catch {}
+      finally { setKhataLoading(false) }
+    }
   }
 
-  async function submit(e) {
+  function submit(e) {
     e.preventDefault()
-    setError('')
-    setResult(null)
-    setLoading(true)
-    try {
-      setResult(
-        await post('/api/pattadar/search', {
-          district_id: districtId,
-          mandal_id: mandalId,
-          village_id: villageId,
-          survey_no: surveyNo,
-          khata_id: khataId,
-        })
-      )
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
+    if (!village) { setError('Please select a village first.'); return }
+    run(() => post('/api/pattadar/search', {
+      district_id: village.district_id,
+      mandal_id: village.mandal_id,
+      village_id: village.village_id,
+      survey_no: surveyNo,
+      khata_id: khataId,
+    }))
   }
 
   return (
     <form onSubmit={submit}>
-      <Field label="District" required>
-        <select value={districtId} onChange={(e) => onDistrict(e.target.value)} required>
-          <option value="">Select District</option>
-          {districts.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
-        </select>
+      <Field label="Village / Mandal" required>
+        <VillageSearch portal="pattadar" onSelect={onVillage} />
       </Field>
-      <Field label="Mandal" required>
-        <select value={mandalId} onChange={(e) => onMandal(e.target.value)} disabled={!districtId} required>
-          <option value="">Select Mandal</option>
-          {mandals.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-        </select>
-      </Field>
-      <Field label="Village" required>
-        <select value={villageId} onChange={(e) => onVillage(e.target.value)} disabled={!mandalId} required>
-          <option value="">Select Village</option>
-          {villages.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
-        </select>
-      </Field>
-      <Field label="Survey No. / Sub-Division No." required>
-        <select value={surveyNo} onChange={(e) => onSurvey(e.target.value)} disabled={!villageId} required>
-          <option value="">Select Survey Number</option>
-          {surveyOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-        </select>
+      <Field
+        label="Survey No. / Sub-Division No."
+        required
+        hint={village && !surveyLoading && surveyOptions.length === 0 ? 'Enter manually' : ''}
+      >
+        {surveyLoading || surveyOptions.length > 0 ? (
+          <SelectLoading loading={surveyLoading} value={surveyNo} onChange={(e) => onSurvey(e.target.value)} disabled={!village} required>
+            <option value="">{surveyLoading ? 'Loading surveys…' : 'Select Survey Number'}</option>
+            {surveyOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+          </SelectLoading>
+        ) : (
+          <input
+            placeholder={village ? 'e.g. 123 or 1/2A' : 'Select village first'}
+            value={surveyNo}
+            onChange={(e) => { setSurveyNo(e.target.value); setKhataOptions([]); setKhataId('') }}
+            disabled={!village}
+            required
+          />
+        )}
       </Field>
       <Field label="Khata Number" required>
-        <select value={khataId} onChange={(e) => setKhataId(e.target.value)} disabled={!surveyNo} required>
-          <option value="">Select Khata Number</option>
+        <SelectLoading loading={khataLoading} value={khataId} onChange={(e) => setKhataId(e.target.value)} disabled={!surveyNo} required>
+          <option value="">{khataLoading ? 'Loading khata numbers…' : 'Select Khata Number'}</option>
           {khataOptions.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
-        </select>
+        </SelectLoading>
       </Field>
-      <button type="submit" disabled={loading}>{loading ? 'Fetching…' : 'Fetch Pattadar Details'}</button>
+      <button type="submit" disabled={loading || !village} className={loading ? 'btn-loading' : ''}>
+        {loading ? <><span className="btn-spinner" /> Fetching record…</> : 'Fetch Pattadar Details'}
+      </button>
       <ResultBox error={error} result={result} />
     </form>
   )
 }
 
+function AdangalForm() {
+  const { post, get } = useApi()
+  const { result, error, loading, run, setError } = useFormState()
+  const [village, setVillage] = useState(null)
+  const [surveyOptions, setSurveyOptions] = useState([])
+  const [surveyNo, setSurveyNo] = useState('')
+  const [surveyLoading, setSurveyLoading] = useState(false)
+
+  async function onVillage(v) {
+    setVillage(v)
+    setSurveyOptions([]); setSurveyNo('')
+    if (v) {
+      setSurveyLoading(true)
+      try { setSurveyOptions(await get(`/api/adangal/survey-options/${v.village_id}`)) }
+      catch {}
+      finally { setSurveyLoading(false) }
+    }
+  }
+
+  function submit(e) {
+    e.preventDefault()
+    if (!village) { setError('Please select a village first.'); return }
+    run(() => post('/api/adangal/search', {
+      district_id: village.district_id,
+      division_id: village.division_id,
+      mandal_id: village.mandal_id,
+      village_id: village.village_id,
+      survey_or_khata_value: surveyNo,
+      option: 'surveyNo',
+    }))
+  }
+
+  return (
+    <form onSubmit={submit}>
+      <Field label="Village / Division" required>
+        <VillageSearch portal="adangal" onSelect={onVillage} />
+      </Field>
+      <Field
+        label="Survey Number"
+        required
+        hint={village && !surveyLoading && surveyOptions.length === 0 ? 'Enter manually' : ''}
+      >
+        {surveyLoading || surveyOptions.length > 0 ? (
+          <SelectLoading loading={surveyLoading} value={surveyNo} onChange={(e) => setSurveyNo(e.target.value)} disabled={!village} required>
+            <option value="">{surveyLoading ? 'Loading surveys…' : 'Select Survey Number'}</option>
+            {surveyOptions.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+          </SelectLoading>
+        ) : (
+          <input
+            placeholder={village ? 'e.g. 123 or 5A' : 'Select village first'}
+            value={surveyNo}
+            onChange={(e) => setSurveyNo(e.target.value)}
+            disabled={!village}
+            required
+          />
+        )}
+      </Field>
+      <button type="submit" disabled={loading || !village} className={loading ? 'btn-loading' : ''}>
+        {loading ? <><span className="btn-spinner" /> Fetching record…</> : 'Get Adangal'}
+      </button>
+      <ResultBox error={error} result={result} />
+    </form>
+  )
+}
+
+// ---------- page structure ----------
 const DOCUMENT_TYPES = [
   {
     id: 'ghmc-mutation',
@@ -394,7 +461,7 @@ const DOCUMENT_TYPES = [
     navLabel: 'GHMC Property Tax',
     tag: 'Municipality',
     heading: 'GHMC Property Tax',
-    description: 'Search property tax records by PTIN, owner name, or door number, within a circle.',
+    description: 'Search property tax records by PTIN number within a GHMC circle.',
     Form: PropertyTaxForm,
   },
   {
@@ -403,7 +470,7 @@ const DOCUMENT_TYPES = [
     navLabel: 'Pattadar Passbook',
     tag: 'Revenue dept',
     heading: 'Pattadar Passbook',
-    description: 'Land ownership and passbook details, by district, mandal, village, survey and khata number.',
+    description: 'Land ownership and passbook details by village, survey and khata number.',
     Form: PattadarForm,
   },
   {
@@ -412,7 +479,7 @@ const DOCUMENT_TYPES = [
     navLabel: 'Adangal (Pahani)',
     tag: 'Revenue dept',
     heading: 'Adangal Extract (Pahani)',
-    description: 'Land ownership, cultivation, and usage record for agricultural land, by village and survey number.',
+    description: 'Land ownership, cultivation, and usage record for agricultural land by village and survey number.',
     Form: AdangalForm,
   },
 ]

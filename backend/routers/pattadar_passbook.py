@@ -2,24 +2,15 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from backend.core.errors import PortalError
+from backend.core.hierarchy import search_pattadar_villages
 from backend.scrapers.pattadar_passbook import client as pattadar_client
 
 router = APIRouter(prefix="/api/pattadar", tags=["pattadar"])
 
 
-@router.get("/districts")
-def districts():
-    return pattadar_client.fetch_districts()
-
-
-@router.get("/mandals/{district_id}")
-def mandals(district_id: str):
-    return pattadar_client.fetch_mandals(district_id)
-
-
-@router.get("/villages/{mandal_id}")
-def villages(mandal_id: str):
-    return pattadar_client.fetch_villages(mandal_id)
+@router.get("/villages/search")
+def villages_search(q: str = ""):
+    return search_pattadar_villages(q)
 
 
 @router.get("/survey-options/{village_id}")

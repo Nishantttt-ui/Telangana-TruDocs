@@ -2,29 +2,15 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from backend.core.errors import PortalError
+from backend.core.hierarchy import search_adangal_villages
 from backend.scrapers.adangal import client as adangal_client
 
 router = APIRouter(prefix="/api/adangal", tags=["adangal"])
 
 
-@router.get("/districts")
-def districts():
-    return adangal_client.fetch_districts()
-
-
-@router.get("/divisions/{district_id}")
-def divisions(district_id: str):
-    return adangal_client.fetch_divisions(district_id)
-
-
-@router.get("/mandals/{district_id}/{division_id}")
-def mandals(district_id: str, division_id: str):
-    return adangal_client.fetch_mandals(district_id, division_id)
-
-
-@router.get("/villages/{district_id}/{mandal_id}")
-def villages(district_id: str, mandal_id: str):
-    return adangal_client.fetch_villages(district_id, mandal_id)
+@router.get("/villages/search")
+def villages_search(q: str = ""):
+    return search_adangal_villages(q)
 
 
 @router.get("/survey-options/{village_id}")
@@ -43,10 +29,6 @@ class AdangalRequest(BaseModel):
 
 @router.post("/search")
 def search(req: AdangalRequest):
-    # Confirmed working live end-to-end, including the final submit: verified
-    # by diffing a real "no record" response against a fresh page load, which
-    # is how an earlier false-positive "captcha mismatch" bug in the response
-    # parser (see client.py's _parse_result) got caught and fixed.
     try:
         return adangal_client.fetch_adangal(
             district_id=req.district_id,

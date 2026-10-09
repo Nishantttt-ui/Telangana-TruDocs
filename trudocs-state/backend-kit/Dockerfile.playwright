@@ -1,0 +1,49 @@
+# syntax=docker/dockerfile:1
+# TruDocs state image — HTTP tools PLUS Playwright/Chromium for portals that need a real browser.
+# Costs: ~2 GB larger image (2.37 GB vs 378 MB measured), ~2 s browser launch, ~0.3 GB RAM for the browser + ~0.2 GB per page
+# (measured, SKILL.md §3). Keep ONE browser per process; never launch one per request.
+# Prefer Dockerfile.http unless the portal analysis proved a browser is required.
+#
+#   docker build -f Dockerfile.playwright -t trudocs-<state>-pw .
+
+FROM node:20-slim AS web
+WORKDIR /web
+COPY frontend-v2/package.json frontend-v2/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY frontend-v2/ ./
+RUN npm run build
+
+FROM python:3.11-slim
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PORT=8080 \
+    WEB_CONCURRENCY=1 \
+    FRONTEND_DIST=/app/frontend-v2/dist \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
+WORKDIR /app
+COPY requirements.txt .
+# requirements.txt must include playwright==<version>; `install --with-deps` then fetches the
+# matching Chromium and the OS libraries it needs. ONE browser only (chromium) — the Karnataka
+# image installs Chromium twice (apt + playwright) and also Selenium; don't copy that.
+RUN pip install -r requirements.txt \
+ && playwright install --with-deps chromium \
+ && rm -rf /var/lib/apt/lists/* \
+ && chmod -R a+rX /ms-playwright
+
+COPY backend ./backend
+COPY covers ./covers
+COPY --from=web /web/dist ./frontend-v2/dist
+
+RUN useradd --system --create-home --uid 10001 app && chown -R app:app /app
+USER app
+
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD python -c "import os,sys,urllib.request as u; sys.exit(0 if u.urlopen('http://127.0.0.1:%s/api/ready' % os.environ['PORT'], timeout=4).status == 200 else 1)"
+
+# In code: Playwright already launches Chromium without its sandbox, so the non-root user
+# needs no special args (verified in this image). Bound concurrent browsers with a PortalGate
+# or a small executor; size memory as ~0.3 GB + ~0.2 GB per concurrent page.
+CMD ["sh", "-c", "exec uvicorn backend.main:app --host 0.0.0.0 --port ${PORT}"]

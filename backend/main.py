@@ -1,4 +1,7 @@
+import logging
 import os
+import threading
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -7,11 +10,46 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.routers import adangal, ghmc, health, pattadar_passbook
 
-app = FastAPI(title="Telangana TruDocs API", version="0.1.0")
+logger = logging.getLogger(__name__)
 
+
+def _prewarm_caches() -> None:
+    """Pre-populate district caches in a background thread at startup.
+
+    Both scrapers cache district lists with lru_cache — they never change
+    at runtime, but each cold call to a government Java server can take
+    30+ seconds. Pre-warming here means the first real user request finds
+    the cache already hot instead of waiting on a live round-trip.
+    Failures are logged and suppressed so a slow/down portal at startup
+    doesn't prevent the app from serving GHMC routes that need no cascade.
+    """
+    from backend.scrapers.pattadar_passbook import client as pattadar_client
+    from backend.scrapers.adangal import client as adangal_client
+
+    for name, fn in [
+        ("pattadar districts", pattadar_client.fetch_districts),
+        ("adangal districts", adangal_client.fetch_districts),
+    ]:
+        try:
+            result = fn()
+            logger.info("cache prewarm: %s → %d items", name, len(result))
+        except Exception as exc:
+            logger.warning("cache prewarm failed for %s (will retry on first user request): %s", name, exc)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    threading.Thread(target=_prewarm_caches, daemon=True, name="cache-prewarm").start()
+    yield
+
+
+app = FastAPI(title="Telangana TruDocs API", version="0.1.0", lifespan=lifespan)
+
+# CORS — always allow localhost dev server; add any production origins from env.
+_extra_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"] + _extra_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )

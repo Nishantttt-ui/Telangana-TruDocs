@@ -28,11 +28,11 @@ USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTM
 _throttle = RateLimiter(min_interval_seconds=1.0)
 
 
-def _client() -> httpx.Client:
+def _client(timeout: float = 45.0) -> httpx.Client:
     return httpx.Client(
         base_url=BASE_URL,
         headers={"User-Agent": USER_AGENT},
-        timeout=20.0,
+        timeout=timeout,
         follow_redirects=True,
     )
 

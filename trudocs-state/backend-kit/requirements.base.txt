@@ -1,0 +1,20 @@
+# Lean runtime for a TruDocs state backend (HTTP-only tools).
+# No OCR / torch / selenium: captchas are typed by the end user, so none of that is needed.
+# Versions match the Karnataka repo's known-good pins.
+fastapi==0.136.1
+uvicorn==0.46.0
+slowapi==0.1.10
+limits==5.8.0
+pydantic==2.13.4
+httpx==0.28.1
+curl_cffi==0.15.0
+beautifulsoup4==4.15.0
+pypdf==6.11.0
+reportlab==4.5.1
+psutil==7.2.2
+python-dotenv==1.2.2
+
+# Only if the portal analysis (SKILL.md §3) picked a real browser for a tool:
+# playwright==1.60.0
+# Only if scaling past one instance (SKILL.md §11):
+# redis==5.2.1

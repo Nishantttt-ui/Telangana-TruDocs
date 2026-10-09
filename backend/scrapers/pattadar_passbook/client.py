@@ -48,11 +48,11 @@ def _enc(plaintext: str) -> str:
     return base64.b64encode(cipher.encrypt(padded)).decode("ascii")
 
 
-def _client() -> httpx.Client:
+def _client(timeout: float = 45.0) -> httpx.Client:
     return httpx.Client(
         base_url=BASE_URL,
         headers={"User-Agent": USER_AGENT, "X-Requested-With": "XMLHttpRequest", "Referer": BASE_URL + LANDING_PATH},
-        timeout=20.0,
+        timeout=timeout,
         follow_redirects=True,
     )
 
@@ -162,16 +162,42 @@ def fetch_pattadar_by_survey(
                 last_detail = "ocr produced empty result"
                 continue
 
-            # Confirmed live: this MUST be a POST with these fields as a form
-            # body, not a GET with a query string — sending it as GET (even
-            # with a 100%-verified-correct captcha, confirmed by manually
-            # reading a captcha image myself to rule out OCR error) still
-            # produced the same generic error page every time. POST is what
-            # the real site's own jQuery call does (`Content-Type:
-            # application/x-www-form-urlencoded`, confirmed from a captured
-            # browser request), and district/mandal/divi are NOT part of the
-            # body in that capture — only query items like `flagval` carry
-            # the location context the server needs.
+            encrypted_captcha = _enc(captcha_text)
+
+            # Confirmed from captured browser session: the site calls
+            # /checkcaptchaforViewRorandPahani with the encrypted captcha as
+            # a URL query param (Content-Length: 0, empty body) before the
+            # main submit. This "commits" the captcha to the server session —
+            # skipping it causes the subsequent getPublicDataInfo to return
+            # the generic error page even when the captcha would otherwise
+            # be correct. Failures here (network errors, unexpected response)
+            # fall through to retry; they are not treated as hard errors
+            # because the pre-check does not itself return the land data.
+            try:
+                _throttle.wait()
+                check_resp = client.post(
+                    "/checkcaptchaforViewRorandPahani",
+                    params={"captcha": encrypted_captcha},
+                    content=b"",
+                )
+                check_resp.raise_for_status()
+                check_body = check_resp.text.strip().lower()
+                if check_body in ("false", "0", "fail", "invalid"):
+                    last_detail = f"captcha pre-check rejected captcha guess {captcha_text!r}"
+                    continue
+            except (httpx.TimeoutException, httpx.HTTPError):
+                pass  # if pre-check is unavailable, still attempt the main submit
+
+            # Confirmed from captured browser session: district and mandal
+            # travel as URL query-string params on getPublicDataInfo (NOT in
+            # the POST body). The body carries villageId/searchData/captcha
+            # etc. The server reads location context from the query string
+            # and search params from the body.
+            url_params = {
+                "district": district_id,
+                "mandal": mandal_id,
+                "divi": "",
+            }
             data = {
                 "villageId": village_id,
                 "flagToSearch": "surveynumber",
@@ -179,11 +205,11 @@ def fetch_pattadar_by_survey(
                 "flagval": "district",
                 "khataNoIdselect": khata_id,
                 "ReqType": "Citizen",
-                "captcha": _enc(captcha_text),
+                "captcha": encrypted_captcha,
             }
             try:
                 _throttle.wait()
-                resp = client.post("/getPublicDataInfo", data=data)
+                resp = client.post("/getPublicDataInfo", params=url_params, data=data)
                 resp.raise_for_status()
             except httpx.TimeoutException as exc:
                 raise PortalError(PORTAL_TIMEOUT, str(exc)) from exc

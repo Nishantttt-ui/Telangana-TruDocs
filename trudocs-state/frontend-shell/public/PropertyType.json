@@ -1,0 +1,252 @@
+[
+    {
+        "propertytypeid": 36,
+        "typeNameKannada": "Š.ÇÝ.°. Äå\u0090",
+        "typeNameEnglish": "APT No"
+    },
+    {
+        "propertytypeid": 12,
+        "typeNameKannada": "ƒÜÈðÜÈóÔðê\u0090¯ó",
+        "typeNameEnglish": "Assessment No"
+    },
+    {
+        "propertytypeid": 59,
+        "typeNameKannada": "BBMP PID",
+        "typeNameEnglish": "BBMP PID"
+    },
+    {
+        "propertytypeid": 6,
+        "typeNameKannada": "Ë.´™.Š. Äå\u0090",
+        "typeNameEnglish": "BDA No"
+    },
+    {
+        "propertytypeid": 67,
+        "typeNameKannada": "BDA PID",
+        "typeNameEnglish": "BDA PID"
+    },
+    {
+        "propertytypeid": 11,
+        "typeNameKannada": "ÊæÓ’ó Äå\u0090",
+        "typeNameEnglish": "Block No"
+    },
+    {
+        "propertytypeid": 35,
+        "typeNameKannada": "ÜÝ.Œ.°.Ë. Äå\u0090",
+        "typeNameEnglish": "CITB No"
+    },
+    {
+        "propertytypeid": 5,
+        "typeNameKannada": "ÜÝ.Š\u0090.ÜÝ. Äå\u0090",
+        "typeNameEnglish": "CMC No"
+    },
+    {
+        "propertytypeid": 23,
+        "typeNameKannada": "ÇÈå²™Ôå½\u0081¼å ÜÈåÔð\u0081 Äå\u0090",
+        "typeNameEnglish": "Converted Survey No"
+    },
+    {
+        "propertytypeid": 4,
+        "typeNameKannada": "’æÇÈðî\u0081é²µðéÚÈåÄó",
+        "typeNameEnglish": "Corporation No"
+    },
+    {
+        "propertytypeid": 38,
+        "typeNameKannada": "_¦. ¦. è_+=. -sÉ.",
+        "typeNameEnglish": "C.T.S No"
+    },
+    {
+        "propertytypeid": 37,
+        "typeNameKannada": "´µðë²µó Äå\u0090",
+        "typeNameEnglish": "Door No"
+    },
+    {
+        "propertytypeid": 69,
+        "typeNameKannada": "DRC Number",
+        "typeNameEnglish": "DRC Number"
+    },
+    {
+        "propertytypeid": 65,
+        "typeNameKannada": "eAASTHI PID",
+        "typeNameEnglish": "eAASTHI PID"
+    },
+    {
+        "propertytypeid": 20,
+        "typeNameKannada": "….´µåÊëÓ.ŠÜÈó. Äå\u0090",
+        "typeNameEnglish": "EWS No"
+    },
+    {
+        "propertytypeid": 16,
+        "typeNameKannada": "ÇÈæÓüÏ¯ó Äå\u0090",
+        "typeNameEnglish": "Flat No"
+    },
+    {
+        "propertytypeid": 27,
+        "typeNameKannada": "˜µò\u0090²¿µå¹æ ÔåêÄð Äå\u0090",
+        "typeNameEnglish": "Gramathana House List No"
+    },
+    {
+        "propertytypeid": 31,
+        "typeNameKannada": "ßðôó.ŠÜÈó.Š.Ë. •æ¼æ Äå\u0090",
+        "typeNameEnglish": "HASB Khata No"
+    },
+    {
+        "propertytypeid": 29,
+        "typeNameKannada": "ßðôó.ŠÜÈó.Š.Ë. Äå\u0090",
+        "typeNameEnglish": "HASB No"
+    },
+    {
+        "propertytypeid": 30,
+        "typeNameKannada": "ßðôó.Š.ŠÜÈó.ŠÄó. Äå\u0090",
+        "typeNameEnglish": "HASN No"
+    },
+    {
+        "propertytypeid": 19,
+        "typeNameKannada": "ßð¡.Œ.¨. Äå\u0090",
+        "typeNameEnglish": "HIG No"
+    },
+    {
+        "propertytypeid": 26,
+        "typeNameKannada": "ßòÜÈó ÒÜÈó± Äå\u0090",
+        "typeNameEnglish": "House List No"
+    },
+    {
+        "propertytypeid": 14,
+        "typeNameKannada": "ßòÜÈó ÒÜÈó± Äå\u0090",
+        "typeNameEnglish": "House List No"
+    },
+    {
+        "propertytypeid": 8,
+        "typeNameKannada": "ßòÜÈó Äå\u0090",
+        "typeNameEnglish": "House No"
+    },
+    {
+        "propertytypeid": 43,
+        "typeNameKannada": "¦\u0090¦²µó",
+        "typeNameEnglish": "Janjar"
+    },
+    {
+        "propertytypeid": 13,
+        "typeNameKannada": "•ÄðéÜÈåêÔåìæ²™ Äå\u0090",
+        "typeNameEnglish": "Khaneshumari No"
+    },
+    {
+        "propertytypeid": 24,
+        "typeNameKannada": "•æ¼æ ƒÜÈðÜÈóÔðê\u0090¯ó",
+        "typeNameEnglish": "Khata Assessment No"
+    },
+    {
+        "propertytypeid": 2,
+        "typeNameKannada": "•æ¼æ Äå\u0090",
+        "typeNameEnglish": "Khata No"
+    },
+    {
+        "propertytypeid": 28,
+        "typeNameKannada": "•æ¼æ ’åÐÔåê ÜÈå\u0090•ðÏ",
+        "typeNameEnglish": "Khata Serial No"
+    },
+    {
+        "propertytypeid": 68,
+        "typeNameKannada": "KHB PID",
+        "typeNameEnglish": "KHB PID"
+    },
+    {
+        "propertytypeid": 17,
+        "typeNameKannada": "ŠÑó.Œ.¨. Äå\u0090",
+        "typeNameEnglish": "LIG No"
+    },
+    {
+        "propertytypeid": 18,
+        "typeNameKannada": "Š\u0090.Œ.¨. Äå\u0090",
+        "typeNameEnglish": "MIG No"
+    },
+    {
+        "propertytypeid": 9,
+        "typeNameKannada": "ÔåêêÅÞÇÈåÑó Äå\u0090",
+        "typeNameEnglish": "Muncipal List No"
+    },
+    {
+        "propertytypeid": 33,
+        "typeNameKannada": "„Ç·ÝéÜÈó Äå\u0090",
+        "typeNameEnglish": "Office No"
+    },
+    {
+        "propertytypeid": 22,
+        "typeNameKannada": "ÇÈæÓ¯ó Äå\u0090",
+        "typeNameEnglish": "Plot No"
+    },
+    {
+        "propertytypeid": 34,
+        "typeNameKannada": "ÇÈÝÐÕêéÜÝÜÈó Äå\u0090",
+        "typeNameEnglish": "Premises No"
+    },
+    {
+        "propertytypeid": 15,
+        "typeNameKannada": "„ÜÝ¾ Äå\u0090",
+        "typeNameEnglish": "Property No"
+    },
+    {
+        "propertytypeid": 60,
+        "typeNameKannada": "RDPR PID",
+        "typeNameEnglish": "RDPR PID"
+    },
+    {
+        "propertytypeid": 25,
+        "typeNameKannada": "’åÐÔåê ÜÈå\u0090•ðÏ",
+        "typeNameEnglish": "Serial No"
+    },
+    {
+        "propertytypeid": 3,
+        "typeNameKannada": "ÜÈåðñ¯ó Äå\u0090",
+        "typeNameEnglish": "Site No"
+    },
+    {
+        "propertytypeid": 7,
+        "typeNameKannada": "ÜÈåÊó.´™Õ¦Äó Äå\u0090",
+        "typeNameEnglish": "Sub-Division No"
+    },
+    {
+        "propertytypeid": 1,
+        "typeNameKannada": "ÜÈåÔð\u0081 Äå\u0090",
+        "typeNameEnglish": "Survey No"
+    },
+    {
+        "propertytypeid": 39,
+        "typeNameKannada": "¯òÄó ÜÈåÔð\u0081. Äå\u0090.",
+        "typeNameEnglish": "Town Survey No."
+    },
+    {
+        "propertytypeid": 41,
+        "typeNameKannada": "°. ÇÝ. ÜÝ.",
+        "typeNameEnglish": "T.P.C"
+    },
+    {
+        "propertytypeid": 32,
+        "typeNameKannada": "²ìåêëÅ¯ó Äå\u0090",
+        "typeNameEnglish": "Unit No"
+    },
+    {
+        "propertytypeid": 61,
+        "typeNameKannada": "UPOR NUMBER",
+        "typeNameEnglish": "UPOR NUMBER"
+    },
+    {
+        "propertytypeid": 62,
+        "typeNameKannada": "Villa",
+        "typeNameEnglish": "Villa"
+    },
+    {
+        "propertytypeid": 21,
+        "typeNameKannada": "˜µæÐÔåê ÇÈå\u0090ôæ²ìåê½ •æ¼æ Äå\u0090",
+        "typeNameEnglish": "Village Panchayat Khata No"
+    },
+    {
+        "propertytypeid": 42,
+        "typeNameKannada": "Õ. ŠÜÈó.ŠÜÈó.",
+        "typeNameEnglish": "V.S.S."
+    },
+    {
+        "propertytypeid": 10,
+        "typeNameKannada": "Ôåæ´µó\u0081 Äå\u0090",
+        "typeNameEnglish": "Ward No"
+    }
+]

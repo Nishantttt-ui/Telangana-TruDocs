@@ -1,0 +1,20 @@
+.git
+.gitignore
+.env
+.env.*
+**/__pycache__
+**/*.pyc
+venv
+.venv
+**/node_modules
+**/dist
+*.pdf.tmp
+.DS_Store
+**/.DS_Store
+tests
+.claude
+docs
+*.md
+# never bake credentials or portal exports into an image
+token*.json
+credentials*.json

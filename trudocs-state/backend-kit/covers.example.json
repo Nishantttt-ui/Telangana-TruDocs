@@ -1,0 +1,30 @@
+{
+  "_comment": "Covers config. Paths are relative to THIS file. Positions are 'design units' from the TOP-LEFT of the design space (see kit/pdf_cover.py). Read them off a template with: python -m backend.kit.cover_grid covers/<file>.pdf",
+
+  "default": {
+    "template": "covers/default_cover.pdf",
+    "fields": [
+      { "key": "name", "x": 64, "top": 560, "size": 52, "color": "#163A2E", "max_width": 1100 }
+    ]
+  },
+
+  "services": {
+    "ec": {
+      "template": "covers/ec_cover.pdf",
+      "design": [1403.2, 992.4],
+      "fields": [
+        { "key": "name",     "x": 64, "top": 560, "size": 52, "color": "#163A2E", "max_width": 1100 },
+        { "key": "property", "x": 64, "top": 640, "size": 28, "color": "#6B6B6B" }
+      ]
+    },
+
+    "bhunaksha": {
+      "template": "covers/bhunaksha_cover.pdf",
+      "fields": [
+        { "key": "survey_no", "x": 300, "top": 420, "size": 40, "align": "center" }
+      ]
+    },
+
+    "rtc": null
+  }
+}
