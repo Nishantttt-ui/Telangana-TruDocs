@@ -3,6 +3,9 @@
 
 Run from the repo root:  python -m pytest tests
 """
+import time
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -80,7 +83,7 @@ def test_parses_only_the_columns_the_portal_shows():
 
 def test_header_only_table_is_not_found():
     header_only = RATES_HTML.split("<tr>\n  <td")[0] + "</table>"
-    _raises(NOT_FOUND, client._parse_rates, header_only)
+    _raises(client.NO_RATES, client._parse_rates, header_only)
 
 
 def test_error_msg_page_is_bad_input():
@@ -110,7 +113,7 @@ def test_inputs_are_checked_before_the_portal():
     _raises(BAD_INPUT, client.fetch_rates, district_id="16_1", division_id="1600001", locality_id="1611", locality="")
 
 
-@pytest.mark.parametrize("message, status", [(NOT_FOUND, 404), (BAD_INPUT, 400), (PORTAL_DOWN, 502)])
+@pytest.mark.parametrize("message, status", [(client.NO_RATES, 404), (NOT_FOUND, 404), (BAD_INPUT, 400), (PORTAL_DOWN, 502)])
 def test_router_maps_errors_to_status_codes(monkeypatch, message, status):
     def fail(**_):
         raise PortalError(message)
@@ -121,3 +124,21 @@ def test_router_maps_errors_to_status_codes(monkeypatch, message, status):
     resp = TestClient(app).post("/api/market-value/search", json={"district_id": "15_1"})
     assert resp.status_code == status
     assert resp.json()["detail"] == message
+
+
+def test_identical_searches_at_once_hit_the_portal_once(monkeypatch):
+    calls = []
+
+    def slow_portal(_client, path, data):
+        calls.append(path)
+        time.sleep(0.2)
+        return type("Reply", (), {"text": RATES_HTML})()
+
+    monkeypatch.setattr(client, "_post", slow_portal)
+    client._rates.cache_clear()
+    args = dict(district_id="15_1", mandal_id="07", mandal="GANDIPET", village_id="1516004", village="KOKAPET")
+    with ThreadPoolExecutor(8) as pool:
+        results = list(pool.map(lambda _: client.fetch_rates(**args), range(8)))
+    client._rates.cache_clear()
+    assert len(calls) == 1
+    assert all(r == results[0] and r["rows"] for r in results)

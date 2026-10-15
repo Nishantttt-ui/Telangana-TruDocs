@@ -7,7 +7,7 @@ from backend.scrapers.market_value import client as mv_client
 
 router = APIRouter(prefix="/api/market-value", tags=["market-value"])
 
-_STATUS = {NOT_FOUND: 404, BAD_INPUT: 400}
+_STATUS = {NOT_FOUND: 404, BAD_INPUT: 400, mv_client.NO_RATES: 404}
 
 
 def _http_error(exc: PortalError) -> HTTPException:

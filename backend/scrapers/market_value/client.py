@@ -18,12 +18,14 @@ Confirmed live (2026-10-15) by reading the page JS and replaying it:
 import base64
 import json
 import re
+import threading
+import time
 from functools import lru_cache
 from html import unescape
 
 import httpx
 
-from backend.core.errors import BAD_INPUT, NOT_FOUND, PORTAL_DOWN, PORTAL_TIMEOUT, PortalError
+from backend.core.errors import BAD_INPUT, PORTAL_DOWN, PORTAL_TIMEOUT, PortalError
 from backend.core.rate_limit import RateLimiter
 
 BASE_URL = "https://registration.telangana.gov.in"
@@ -31,7 +33,17 @@ LANDING_PATH = "/UnitRateMV/getDistrictList.htm"
 USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 HYDERABAD = "16_1"
 
-_throttle = RateLimiter(min_interval_seconds=1.0)
+# A rates table with no rows: the user picked a real place, so don't say "check your details".
+NO_RATES = "The department hasn't published market value rates for this place."
+
+# At most two portal requests a second (the GHMC and Pattadar clients use the same gap).
+_throttle = RateLimiter(min_interval_seconds=0.5)
+
+_CACHE_SECONDS = 6 * 3600
+# Identical searches that arrive together wait for one portal fetch instead of each
+# making their own. Striped locks keep this bounded; two different searches only
+# share a lock 1 time in 32.
+_LOCKS = [threading.Lock() for _ in range(32)]
 
 # Checked before anything reaches the portal. The locality text also can't
 # contain "~", which is the field separator inside `codes`.
@@ -214,6 +226,16 @@ def fetch_rates(
             "locality": "",
         }
 
+    key = tuple(fields.items())
+    with _LOCKS[hash(key) % len(_LOCKS)]:
+        return _rates(key, int(time.time() // _CACHE_SECONDS))
+
+
+# shortcut: per-process cache in 6-hour buckets (rates change about once a year), so a
+# repeat search skips the portal; move to Redis if we run more than one instance.
+@lru_cache(maxsize=512)
+def _rates(fields: tuple, _bucket: int) -> dict:
+    fields = dict(fields)
     # The page's getJsonSubmit() serialises the form (encodestr is still empty at
     # that point) to JSON, base64-encodes it, and posts it alongside the fields.
     encoded = base64.b64encode(json.dumps({"encodestr": "", **fields}, separators=(",", ":")).encode()).decode()
@@ -253,6 +275,6 @@ def _parse_rates(html: str) -> dict:
             rows.append(dict(zip(_COLUMNS, cells[1:5])))
 
     if not rows:
-        raise PortalError(NOT_FOUND, "rates table had no data rows")
+        raise PortalError(NO_RATES, "rates table had no data rows")
 
     return {"source": "igrs_market_value", "found": True, "rows": rows}

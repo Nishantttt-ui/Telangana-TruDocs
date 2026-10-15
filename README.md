@@ -39,3 +39,10 @@ Tests (parsers and error mapping, no network):
 .venv/bin/pip install pytest
 .venv/bin/python -m pytest tests
 ```
+
+Load test (server running): fires N searches at the same moment at the live portal (the
+client throttles itself to 2 portal requests a second, and repeats are cached for 6 hours):
+```
+.venv/bin/python -m backend.scripts.load_test_market_value --base http://localhost:8000 -n 10
+.venv/bin/python -m backend.scripts.load_test_market_value --base http://localhost:8000 -n 10 --same
+```

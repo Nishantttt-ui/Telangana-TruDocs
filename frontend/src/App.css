@@ -597,3 +597,18 @@ button[type="submit"]:disabled { opacity: 0.6; cursor: not-allowed; }
   letter-spacing: 0;
   margin-left: 8px;
 }
+
+/* ---------- mobile web (phones, ≤ 600px) ---------- */
+@media (max-width: 600px) {
+  /* iPhones zoom the whole page in on any input whose text is smaller than 16px. */
+  input, select { font-size: 16px; }
+  /* The three hero stats were 7px wider than a phone screen. */
+  .stat { padding: 0 14px; }
+  /* Result tables become one card per row, each value labelled from data-label. */
+  .stack-on-mobile thead { display: none; }
+  .stack-on-mobile, .stack-on-mobile tbody, .stack-on-mobile tr, .stack-on-mobile td { display: block; width: 100%; }
+  .stack-on-mobile tr { border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 10px; padding: 2px 12px; background: #fff; }
+  .portal-table-wrapper .stack-on-mobile td { border: none; padding: 7px 0; display: flex; justify-content: space-between; gap: 16px; text-align: right; }
+  .portal-table-wrapper .stack-on-mobile td + td { border-top: 1px solid #eee; }
+  .stack-on-mobile td::before { content: attr(data-label); font-weight: 600; color: var(--text-muted); text-align: left; flex-shrink: 0; }
+}

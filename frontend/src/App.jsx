@@ -2,23 +2,33 @@ import { useEffect, useRef, useState } from 'react'
 import './App.css'
 
 // ---------- shared API hook ----------
+// Every failure becomes a sentence a user can act on: the server's own message when it
+// sent one, otherwise a plain explanation (never "Failed to fetch" or "[object Object]").
+async function errorMessage(res) {
+  const data = await res.json().catch(() => ({}))
+  if (typeof data.detail === 'string' && data.detail) return data.detail
+  if (res.status === 429) return 'Too many searches right now. Please wait a minute and try again.'
+  if (res.status >= 500) return "The government portal isn't responding right now. Please try again in a few minutes."
+  return 'Please check the details you entered and try again.'
+}
+
 function useApi() {
-  async function post(path, body) {
-    const res = await fetch(path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok) throw new Error(data.detail || 'Something went wrong.')
-    return data
+  async function request(path, options) {
+    let res
+    try {
+      res = await fetch(path, options)
+    } catch {
+      throw new Error("Can't reach TruDocs right now. Please check your internet connection and try again.")
+    }
+    if (!res.ok) throw new Error(await errorMessage(res))
+    return res.json().catch(() => ({}))
   }
-  async function get(path) {
-    const res = await fetch(path)
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok) throw new Error(data.detail || 'Something went wrong.')
-    return data
-  }
+  const post = (path, body) => request(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const get = (path) => request(path)
   return { post, get }
 }
 
@@ -27,21 +37,33 @@ function useFormState() {
   const [result, setResult] = useState(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  // Only the latest search may set the result: a reply for an older one is dropped.
+  const generation = useRef(0)
 
   async function run(fn) {
+    const gen = ++generation.current
     setError('')
     setResult(null)
     setLoading(true)
     try {
-      setResult(await fn())
+      const data = await fn()
+      if (gen === generation.current) setResult(data)
     } catch (err) {
-      setError(err.message)
+      if (gen === generation.current) setError(err.message)
     } finally {
-      setLoading(false)
+      if (gen === generation.current) setLoading(false)
     }
   }
 
-  return { result, error, loading, run, setError }
+  // Clear the result when the search inputs change, so it never shows under the wrong place.
+  function reset() {
+    generation.current++
+    setResult(null)
+    setError('')
+    setLoading(false)
+  }
+
+  return { result, error, loading, run, setError, reset }
 }
 
 // ---------- field label prettifier ----------
@@ -113,11 +135,12 @@ function ResultBox({ error, result }) {
   )
 }
 
-// Same columns, in the same order, as the official IGRS results page.
+// Same columns, in the same order, as the official IGRS results page. On phones each
+// row becomes a labelled card (stack-on-mobile).
 function MarketValueTable({ rows }) {
   return (
     <div className="portal-table-wrapper">
-      <table>
+      <table className="stack-on-mobile">
         <thead>
           <tr>
             <th>Ward-Block</th>
@@ -129,10 +152,10 @@ function MarketValueTable({ rows }) {
         <tbody>
           {rows.map((r, i) => (
             <tr key={i}>
-              <td>{r.ward_block}</td>
-              <td>{r.locality}</td>
-              <td>{r.land_rate_per_sq_yard}</td>
-              <td>{r.effective_date}</td>
+              <td data-label="Ward-Block">{r.ward_block}</td>
+              <td data-label="Locality">{r.locality}</td>
+              <td data-label="Land Value (₹/sq. yd)">{r.land_rate_per_sq_yard}</td>
+              <td data-label="Effective Date">{r.effective_date}</td>
             </tr>
           ))}
         </tbody>
@@ -494,7 +517,7 @@ function MarketValueForm() {
 
 function VillageMarketValueForm() {
   const { post } = useApi()
-  const { result, error, loading, run, setError } = useFormState()
+  const { result, error, loading, run, setError, reset } = useFormState()
   const [village, setVillage] = useState(null)
 
   function submit(e) {
@@ -512,7 +535,7 @@ function VillageMarketValueForm() {
   return (
     <form onSubmit={submit}>
       <Field label="Village / Mandal" required>
-        <VillageSearch portal="market-value" onSelect={setVillage} />
+        <VillageSearch portal="market-value" onSelect={(v) => { setVillage(v); reset() }} />
       </Field>
       <button type="submit" disabled={loading || !village} className={loading ? 'btn-loading' : ''}>
         {loading ? <><span className="btn-spinner" /> Fetching rates…</> : 'Get Market Value'}
@@ -524,7 +547,7 @@ function VillageMarketValueForm() {
 
 function HyderabadMarketValueForm() {
   const { post, get } = useApi()
-  const { result, error, loading, run, setError } = useFormState()
+  const { result, error, loading, run, setError, reset } = useFormState()
   const [divisions, setDivisions] = useState([])
   const [divisionId, setDivisionId] = useState('')
   const [locQuery, setLocQuery] = useState('')
@@ -574,7 +597,7 @@ function HyderabadMarketValueForm() {
   return (
     <form onSubmit={submit}>
       <Field label="Division" required>
-        <select value={divisionId} onChange={(e) => { setDivisionId(e.target.value); setLocalityIndex('') }} required>
+        <select value={divisionId} onChange={(e) => { setDivisionId(e.target.value); setLocalityIndex(''); reset() }} required>
           <option value="">Select Division</option>
           {divisions.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
         </select>
@@ -583,15 +606,15 @@ function HyderabadMarketValueForm() {
         <input
           placeholder={divisionId ? 'e.g. Ameerpet' : 'Select division first'}
           value={locQuery}
-          onChange={(e) => { setLocQuery(e.target.value); setLocalityIndex('') }}
+          onChange={(e) => { setLocQuery(e.target.value); setLocalityIndex(''); reset() }}
           disabled={!divisionId}
           required
         />
       </Field>
       <Field label="Locality" required>
-        <SelectLoading loading={locLoading} value={localityIndex} onChange={(e) => setLocalityIndex(e.target.value)} disabled={localities.length === 0} required>
+        <SelectLoading loading={locLoading} value={localityIndex} onChange={(e) => { setLocalityIndex(e.target.value); reset() }} disabled={localities.length === 0} required>
           <option value="">
-            {locLoading ? 'Searching localities…' : localities.length > 0 ? 'Select Locality' : searchKey ? 'No localities found' : 'Type a locality name above'}
+            {locLoading ? 'Searching localities…' : localities.length > 0 ? 'Select Locality' : searchKey ? `No locality starts with "${q}"` : 'Type a locality name above'}
           </option>
           {localities.map((l, i) => <option key={i} value={String(i)}>{l.label}</option>)}
         </SelectLoading>
@@ -691,6 +714,15 @@ export default function App() {
       window.removeEventListener('scroll', onScroll)
     }
   }, [])
+
+  // On phones the tab bar scrolls sideways; slide it so the active tab stays in view.
+  // Only the bar scrolls (not the page), so a smooth section scroll isn't interrupted.
+  useEffect(() => {
+    const nav = document.querySelector('.navbar')
+    const tab = nav?.querySelector('.nav-tab.active')
+    if (!nav || !tab || nav.scrollWidth <= nav.clientWidth) return
+    nav.scrollTo({ left: tab.offsetLeft - (nav.clientWidth - tab.offsetWidth) / 2, behavior: 'smooth' })
+  }, [activeId])
 
   function scrollToSection(id) {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
