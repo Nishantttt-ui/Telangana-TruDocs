@@ -597,3 +597,9 @@ button[type="submit"]:disabled { opacity: 0.6; cursor: not-allowed; }
   letter-spacing: 0;
   margin-left: 8px;
 }
+
+/* Long 22A survey lists scroll inside their box instead of stretching the page. */
+.survey-scroll { max-height: 480px; overflow: auto; }
+.survey-scroll thead th { position: sticky; top: 0; z-index: 1; }
+.portal-table-wrapper a { color: var(--primary); font-weight: 600; text-decoration: none; }
+.portal-table-wrapper a:hover { text-decoration: underline; }

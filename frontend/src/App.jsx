@@ -64,7 +64,7 @@ function fieldLabel(key) {
 }
 
 // ---------- reusable components ----------
-function ResultBox({ error, result }) {
+function ResultBox({ error, result, children }) {
   if (error) {
     return (
       <div className="result error">
@@ -107,6 +107,8 @@ function ResultBox({ error, result }) {
           ))}
         </div>
       )}
+
+      {result.found && children}
     </div>
   )
 }
@@ -444,6 +446,203 @@ function AdangalForm() {
   )
 }
 
+const KIND_LABELS = { AGRI: 'Agriculture', NONAGRI: 'Non-Agriculture' }
+const SURVEY_ROWS_SHOWN = 200
+
+// "166" + "3" → "166/3". The portal writes "-" or "" for an empty part.
+const joinNo = (a, b) => [a, b].filter((x) => x && x !== '-').join('/') || '-'
+
+function ProhibitedLandsForm() {
+  const { post, get } = useApi()
+  const { result, error, loading, run, setError } = useFormState()
+  const [village, setVillage] = useState(null)
+  const [sros, setSros] = useState([])
+  const [sroCode, setSroCode] = useState('')
+  const [sroLoading, setSroLoading] = useState(false)
+  // The location the current result belongs to (the village box may have changed since).
+  const [searched, setSearched] = useState(null)
+  const isHyderabad = village?.district_id === '16_1'
+
+  async function onVillage(v) {
+    setVillage(v)
+    setSros([]); setSroCode('')
+    // Hyderabad's entries are divisions, and the portal needs one SRO office picked.
+    if (v?.district_id === '16_1') {
+      setSroLoading(true)
+      try { setSros(await get(`/api/prohibited-lands/hyderabad/sros?division_id=${encodeURIComponent(v.village_id)}`)) }
+      catch (err) { setError(err.message) }
+      finally { setSroLoading(false) }
+    }
+  }
+
+  function submit(e) {
+    e.preventDefault()
+    if (!village) { setError('Please select a village first.'); return }
+    if (isHyderabad && !sroCode) { setError('Please select the SRO office.'); return }
+    const location = {
+      district_id: village.district_id,
+      mandal_id: village.mandal_id,
+      village_id: village.village_id,
+      sro_code: isHyderabad ? sroCode : '',
+    }
+    setSearched(location)
+    run(() => post('/api/prohibited-lands/categories', location))
+  }
+
+  return (
+    <form onSubmit={submit}>
+      <Field label="Village / Mandal" required hint="Hyderabad: type the division, e.g. Secunderabad">
+        <VillageSearch portal="prohibited-lands" onSelect={onVillage} />
+      </Field>
+      {isHyderabad && (
+        <Field label="SRO Office" required>
+          <SelectLoading loading={sroLoading} value={sroCode} onChange={(e) => setSroCode(e.target.value)} required>
+            <option value="">{sroLoading ? 'Loading SRO offices…' : 'Select SRO Office'}</option>
+            {sros.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+          </SelectLoading>
+        </Field>
+      )}
+      <button type="submit" disabled={loading || !village || (isHyderabad && !sroCode)} className={loading ? 'btn-loading' : ''}>
+        {loading ? <><span className="btn-spinner" /> Checking…</> : 'Check Prohibited Lands'}
+      </button>
+      <ResultBox error={error} result={result}>
+        {result?.categories && searched && <ProhibitedLandsResult location={searched} categories={result.categories} />}
+      </ResultBox>
+    </form>
+  )
+}
+
+// One row per 22-A(1) category, one column per land kind, each linking the official PDF.
+function ProhibitedLandsResult({ location, categories }) {
+  const kinds = Object.keys(categories)
+  const labels = categories[kinds[0]].map((c) => c.label)
+  const pdfUrl = (kind, formtype) => `/api/prohibited-lands/pdf?${new URLSearchParams({ ...location, kind, formtype })}`
+
+  return (
+    <>
+      <div className="portal-table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Section 22-A(1)</th>
+              {kinds.map((k) => <th key={k}>{KIND_LABELS[k]}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {labels.map((label) => (
+              <tr key={label}>
+                <td>{label}</td>
+                {kinds.map((k) => {
+                  const c = categories[k].find((x) => x.label === label)
+                  return (
+                    <td key={k}>
+                      {c?.available
+                        ? <a href={pdfUrl(k, c.formtype)} target="_blank" rel="noopener noreferrer">View PDF ↗</a>
+                        : 'Not online'}
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {kinds.some((k) => categories[k].some((c) => !c.available)) && (
+          <p className="field-hint">"Not online": the department doesn't publish these lists on its website.</p>
+        )}
+      </div>
+      {kinds.map((k) => <SurveyList key={k} location={location} kind={k} />)}
+    </>
+  )
+}
+
+// The survey-wise list behind "Court cases & Others". Like the official page, it
+// loads every row once and filters in the browser; big areas can take a while.
+function SurveyList({ location, kind }) {
+  const { post } = useApi()
+  const [data, setData] = useState(null)
+  const [loadError, setLoadError] = useState('')
+  const [filter, setFilter] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    post('/api/prohibited-lands/survey-list', { ...location, kind })
+      .then((d) => { if (!cancelled) setData(d) })
+      .catch((err) => { if (!cancelled) setLoadError(err.message) })
+    return () => { cancelled = true }
+  }, [location, kind])
+
+  const q = filter.trim().toUpperCase()
+  const matches = !data ? [] : !q ? data.rows : data.rows.filter((r) => [
+    joinNo(r.survey_no, r.sub_survey_no), joinNo(r.rev_survey_no, r.rev_sub_survey_no),
+    r.door_no, r.ward_block, r.plot_no, r.reason, r.order_no, r.order_date, r.sro,
+  ].some((v) => v && v.toUpperCase().includes(q)))
+  const shown = matches.slice(0, SURVEY_ROWS_SHOWN)
+
+  return (
+    <div className="portal-table-wrapper">
+      <p><strong>Survey list: {KIND_LABELS[kind]}</strong>{data && ` (${data.count})`}</p>
+      {loadError ? (
+        <p>{loadError}</p>
+      ) : !data ? (
+        <p>Loading the survey list… large areas like Hyderabad can take up to a minute.</p>
+      ) : data.count === 0 ? (
+        <p>No properties listed here.</p>
+      ) : (
+        <>
+          <input
+            placeholder="Search survey no., door no., plot no., reason…"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+          />
+          <p className="field-hint">
+            {q ? `${matches.length} of ${data.count} match` : `${data.count} listed`}
+            {matches.length > SURVEY_ROWS_SHOWN ? `, showing the first ${SURVEY_ROWS_SHOWN}. Type to narrow down.` : ''}
+          </p>
+          <div className="survey-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Survey No.</th>
+                  <th>Rev. Survey No.</th>
+                  <th>Door No.</th>
+                  <th>Ward-Block</th>
+                  <th>Plot No.</th>
+                  <th>Extent (Unit)</th>
+                  <th>Reason</th>
+                  <th>Order / Notification</th>
+                  <th>Volume / Page</th>
+                  <th>SRO</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((r, i) => (
+                  <tr key={i}>
+                    <td>{joinNo(r.survey_no, r.sub_survey_no)}</td>
+                    <td>{joinNo(r.rev_survey_no, r.rev_sub_survey_no)}</td>
+                    <td>{r.door_no}</td>
+                    <td>{r.ward_block}</td>
+                    <td>{r.plot_no}</td>
+                    <td>{r.extent}</td>
+                    <td>{r.reason}</td>
+                    <td>
+                      {r.order_id
+                        ? <a href={`/api/prohibited-lands/order?${new URLSearchParams({ order_id: r.order_id, flag: r.order_flag })}`} target="_blank" rel="noopener noreferrer">{r.order_no} ↗</a>
+                        : r.order_no}
+                      {r.order_date && <><br />{r.order_date}</>}
+                    </td>
+                    <td>{r.volume_page}</td>
+                    <td>{r.sro}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ---------- page structure ----------
 const DOCUMENT_TYPES = [
   {
@@ -482,6 +681,15 @@ const DOCUMENT_TYPES = [
     description: 'Land ownership, cultivation, and usage record for agricultural land by village and survey number.',
     Form: AdangalForm,
   },
+  {
+    id: 'prohibited-lands',
+    icon: 'ti ti-ban',
+    navLabel: 'Prohibited Lands (22A)',
+    tag: 'Registration dept',
+    heading: 'Prohibited Lands (Section 22A)',
+    description: 'Official lists of properties barred from registration under Section 22-A, for agricultural and non-agricultural land by village, with the government orders behind each entry.',
+    Form: ProhibitedLandsForm,
+  },
 ]
 
 function Skyline() {
@@ -500,8 +708,13 @@ export default function App() {
 
   useEffect(() => {
     const sections = DOCUMENT_TYPES.map((d) => document.getElementById(d.id)).filter(Boolean)
+    const lastId = DOCUMENT_TYPES[DOCUMENT_TYPES.length - 1].id
+    // The last section can't scroll up into the observer's band, so at the very
+    // bottom of the page it is the active one.
+    const atBottom = () => window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2
     const observer = new IntersectionObserver(
       (entries) => {
+        if (atBottom()) { setActiveId(lastId); return }
         const visible = entries
           .filter((e) => e.isIntersecting)
           .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0]
@@ -509,8 +722,13 @@ export default function App() {
       },
       { rootMargin: '-35% 0px -50% 0px', threshold: [0, 0.25, 0.5, 0.75, 1] }
     )
+    const onScroll = () => { if (atBottom()) setActiveId(lastId) }
     sections.forEach((s) => observer.observe(s))
-    return () => observer.disconnect()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('scroll', onScroll)
+    }
   }, [])
 
   function scrollToSection(id) {
@@ -552,12 +770,12 @@ export default function App() {
 
         <h1>Telangana's own <em>property records</em> engine.</h1>
         <p className="tagline">
-          Search property tax, mutation, and land records — verified live from GHMC and CCLA, Telangana.
+          Search property tax, mutation, land records, and prohibited lands — verified live from GHMC, CCLA, and IGRS, Telangana.
         </p>
 
         <div className="stat-bar">
           <div className="stat">
-            <span className="num">4</span>
+            <span className="num">5</span>
             <span className="label">Live Document Types</span>
           </div>
           <div className="stat">

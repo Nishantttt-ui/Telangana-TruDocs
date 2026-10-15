@@ -8,6 +8,7 @@ Working end-to-end against the live government portals:
 - **GHMC Mutation Status** — fully working.
 - **GHMC Property Tax Search** — fully working (circle is a required field on the portal, not optional).
 - **Adangal Extract (Pahani)** — fully working, including the final search submit. (Note: survey/khata number dropdowns come back empty for most villages tried so far — that appears to be sparse data on the portal's side, not a bug on ours; the search itself correctly returns "No RoR-1B Details Found" for a number with no record, confirmed live.)
+- **Prohibited Lands (Section 22A)** — fully working, no login or captcha (IGRS `openProhibitedProperties.htm`). Village search over a pre-scraped list (`backend/scripts/scrape_prohibited_lands_hierarchy.py`); Hyderabad is division + SRO office (non-agriculture only). Shows the official PDF for each 22-A(1) category (Waqf and Endowment aren't online on the portal either) and the survey-wise list with a link to each order. A Hyderabad SRO list is ~6,000 rows and takes the portal ~30 s, so lists are cached per process for 6 hours.
 
 Not yet built: Pattadar Passbook (its known URL currently 404s on the live portal — needs re-verification), Bhu Bharati EC (no confirmed working URL found yet), TG-IGRS Encumbrance Certificate (confirmed to require citizen login + OTP — blocked on that decision).
 
@@ -31,4 +32,10 @@ Or build the frontend once and let the backend serve it as one process:
 ```
 cd frontend && npm run build && cd ..
 .venv/bin/uvicorn backend.main:app
+```
+
+Tests (parsers and error mapping, no network):
+```
+.venv/bin/pip install pytest
+.venv/bin/python -m pytest tests
 ```
