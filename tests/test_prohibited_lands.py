@@ -3,6 +3,9 @@ responses (captured 2026-10-15). No network: the portal is never called.
 
 Run from the repo root:  python -m pytest tests
 """
+import time
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -167,3 +170,26 @@ def test_pdf_route_streams_pdf_or_shows_a_readable_page(monkeypatch):
     bad = _app().get(f"/api/prohibited-lands/pdf?{query}")
     assert bad.status_code == 404 and bad.headers["content-type"].startswith("text/html")
     assert "under review" in bad.text
+
+
+def test_identical_searches_at_once_hit_the_portal_once(monkeypatch):
+    calls = []
+
+    def slow_portal(_client, method, path, **kwargs):
+        calls.append(path)
+        time.sleep(0.2)
+        text = PANEL_HTML if path == "/prohibitionPublicList.htm" else SURVEY_HTML
+        return type("Reply", (), {"text": text})()
+
+    monkeypatch.setattr(client, "_request", slow_portal)
+    client._categories.cache_clear()
+    client._survey_list.cache_clear()
+    loc = dict(district_id="15_1", mandal_id="07", village_id="1516004")
+    with ThreadPoolExecutor(8) as pool:
+        cats = list(pool.map(lambda _: client.fetch_categories(**loc), range(8)))
+        lists = list(pool.map(lambda _: client.fetch_survey_list(**loc, kind="AGRI"), range(8)))
+    client._categories.cache_clear()
+    client._survey_list.cache_clear()
+    assert calls == ["/prohibitionPublicList.htm", "/prohibitedPropertyDetails_New.htm"]
+    assert all(c == cats[0] for c in cats)
+    assert all(lst == lists[0] and lst["count"] == 2 for lst in lists)

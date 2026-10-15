@@ -21,6 +21,7 @@ Confirmed live (2026-10-15) by reading the page, its controller
 """
 import json
 import re
+import threading
 import time
 from functools import lru_cache
 from html import unescape
@@ -44,7 +45,18 @@ NOT_PUBLISHED = "This list hasn't been published online yet. The department says
 # while, then working again), so the honest message is "try later", not "no record".
 DOC_UNAVAILABLE = "The department's website couldn't return this document right now. Please try again later."
 
-_throttle = RateLimiter(min_interval_seconds=1.0)
+# At most two portal requests a second (the GHMC and Pattadar clients use the same gap).
+_throttle = RateLimiter(min_interval_seconds=0.5)
+
+_CACHE_SECONDS = 6 * 3600
+# Identical searches that arrive together wait for one portal fetch instead of each
+# making their own. Striped locks keep this bounded; two different searches only
+# share a lock 1 time in 32 (and then just wait their turn).
+_LOCKS = [threading.Lock() for _ in range(32)]
+
+
+def _lock(key: tuple) -> threading.Lock:
+    return _LOCKS[hash(key) % len(_LOCKS)]
 
 # Checked before anything reaches the portal.
 _DISTRICT_RE = re.compile(r"\d{1,3}_\d{1,2}")
@@ -164,7 +176,15 @@ _CATEGORY_RE = re.compile(r"getpdf1\(([^)]*)\)\"[^>]*>\s*<img[^>]*>\s*([^<]+?)\s
 
 
 def fetch_categories(*, district_id: str, mandal_id: str, village_id: str, sro_code: str = "") -> dict:
-    district_id, mandal_id, village_id, sro_code = _location(district_id, mandal_id, village_id, sro_code)
+    loc = _location(district_id, mandal_id, village_id, sro_code)
+    with _lock(("categories",) + loc):
+        return _categories(*loc, int(time.time() // _CACHE_SECONDS))
+
+
+# shortcut: per-process cache in 6-hour buckets (the category list changes rarely; the
+# PDFs themselves are always fetched live); move to Redis for more than one instance.
+@lru_cache(maxsize=512)
+def _categories(district_id: str, mandal_id: str, village_id: str, sro_code: str, _bucket: int) -> dict:
     # The page's Fetch form is multipart; send the same.
     form = {"dist_code": district_id, "mand_code": mandal_id, "vill_code": village_id, "sro_code": sro_code}
     with _client() as client:
@@ -239,20 +259,22 @@ _SURVEY_COLUMNS = (
     "sro", "ward_block", "door_no", "survey_no", "sub_survey_no", "rev_survey_no",
     "rev_sub_survey_no", "plot_no", "extent", "volume_page", "reason",
 )
-_CACHE_SECONDS = 6 * 3600
 
 
 def fetch_survey_list(*, district_id: str, mandal_id: str, village_id: str, sro_code: str = "", kind: str) -> dict:
     district_id, mandal_id, village_id, sro_code = _location(district_id, mandal_id, village_id, sro_code)
     if kind not in KINDS:
         raise PortalError(BAD_INPUT, "invalid kind")
-    rows = _survey_list(district_id, mandal_id, village_id, sro_code, kind, int(time.time() // _CACHE_SECONDS))
+    key = (district_id, mandal_id, village_id, sro_code, kind)
+    with _lock(("survey",) + key):
+        rows = _survey_list(*key, int(time.time() // _CACHE_SECONDS))
     return {"kind": kind, "count": len(rows), "rows": rows}
 
 
-# shortcut: per-process cache in 6-hour buckets (max 16 lists; a Hyderabad SRO is ~6,000
-# rows), because the portal takes ~30 s for those; move to Redis if we run >1 instance.
-@lru_cache(maxsize=16)
+# shortcut: per-process cache in 6-hour buckets, because the portal takes ~30 s for a
+# Hyderabad SRO (~6,000 rows). Max 64 lists: most villages list a handful of rows and
+# Hyderabad has only ~13 big ones. Move to Redis if we run more than one instance.
+@lru_cache(maxsize=64)
 def _survey_list(district_id: str, mandal_id: str, village_id: str, sro_code: str, kind: str, _bucket: int) -> list:
     with _client(timeout=150.0) as client:
         resp = _request(client, "POST", "/prohibitedPropertyDetails_New.htm", data={

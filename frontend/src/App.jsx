@@ -2,23 +2,33 @@ import { useEffect, useRef, useState } from 'react'
 import './App.css'
 
 // ---------- shared API hook ----------
+// Every failure becomes a sentence a user can act on: the server's own message when it
+// sent one, otherwise a plain explanation (never "Failed to fetch" or "[object Object]").
+async function errorMessage(res) {
+  const data = await res.json().catch(() => ({}))
+  if (typeof data.detail === 'string' && data.detail) return data.detail
+  if (res.status === 429) return 'Too many searches right now. Please wait a minute and try again.'
+  if (res.status >= 500) return "The government portal isn't responding right now. Please try again in a few minutes."
+  return 'Please check the details you entered and try again.'
+}
+
 function useApi() {
-  async function post(path, body) {
-    const res = await fetch(path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok) throw new Error(data.detail || 'Something went wrong.')
-    return data
+  async function request(path, options) {
+    let res
+    try {
+      res = await fetch(path, options)
+    } catch {
+      throw new Error("Can't reach TruDocs right now. Please check your internet connection and try again.")
+    }
+    if (!res.ok) throw new Error(await errorMessage(res))
+    return res.json().catch(() => ({}))
   }
-  async function get(path) {
-    const res = await fetch(path)
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok) throw new Error(data.detail || 'Something went wrong.')
-    return data
-  }
+  const post = (path, body) => request(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const get = (path) => request(path)
   return { post, get }
 }
 
@@ -27,21 +37,33 @@ function useFormState() {
   const [result, setResult] = useState(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  // Only the latest search may set the result: a reply for an older one is dropped.
+  const generation = useRef(0)
 
   async function run(fn) {
+    const gen = ++generation.current
     setError('')
     setResult(null)
     setLoading(true)
     try {
-      setResult(await fn())
+      const data = await fn()
+      if (gen === generation.current) setResult(data)
     } catch (err) {
-      setError(err.message)
+      if (gen === generation.current) setError(err.message)
     } finally {
-      setLoading(false)
+      if (gen === generation.current) setLoading(false)
     }
   }
 
-  return { result, error, loading, run, setError }
+  // Clear the result when the search inputs change, so it never shows under the wrong place.
+  function reset() {
+    generation.current++
+    setResult(null)
+    setError('')
+    setLoading(false)
+  }
+
+  return { result, error, loading, run, setError, reset }
 }
 
 // ---------- field label prettifier ----------
@@ -454,7 +476,7 @@ const joinNo = (a, b) => [a, b].filter((x) => x && x !== '-').join('/') || '-'
 
 function ProhibitedLandsForm() {
   const { post, get } = useApi()
-  const { result, error, loading, run, setError } = useFormState()
+  const { result, error, loading, run, setError, reset } = useFormState()
   const [village, setVillage] = useState(null)
   const [sros, setSros] = useState([])
   const [sroCode, setSroCode] = useState('')
@@ -466,6 +488,7 @@ function ProhibitedLandsForm() {
   async function onVillage(v) {
     setVillage(v)
     setSros([]); setSroCode('')
+    reset()
     // Hyderabad's entries are divisions, and the portal needs one SRO office picked.
     if (v?.district_id === '16_1') {
       setSroLoading(true)
@@ -496,7 +519,7 @@ function ProhibitedLandsForm() {
       </Field>
       {isHyderabad && (
         <Field label="SRO Office" required>
-          <SelectLoading loading={sroLoading} value={sroCode} onChange={(e) => setSroCode(e.target.value)} required>
+          <SelectLoading loading={sroLoading} value={sroCode} onChange={(e) => { setSroCode(e.target.value); reset() }} required>
             <option value="">{sroLoading ? 'Loading SRO offices…' : 'Select SRO Office'}</option>
             {sros.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
           </SelectLoading>
@@ -537,7 +560,7 @@ function ProhibitedLandsResult({ location, categories }) {
                   return (
                     <td key={k}>
                       {c?.available
-                        ? <a href={pdfUrl(k, c.formtype)} target="_blank" rel="noopener noreferrer">View PDF ↗</a>
+                        ? <a href={pdfUrl(k, c.formtype)} target="_blank" rel="noopener noreferrer">View&nbsp;PDF&nbsp;↗</a>
                         : 'Not online'}
                     </td>
                   )
@@ -582,11 +605,11 @@ function SurveyList({ location, kind }) {
     <div className="portal-table-wrapper">
       <p><strong>Survey list: {KIND_LABELS[kind]}</strong>{data && ` (${data.count})`}</p>
       {loadError ? (
-        <p>{loadError}</p>
+        <p>{loadError} Press "Check Prohibited Lands" to try again.</p>
       ) : !data ? (
-        <p>Loading the survey list… large areas like Hyderabad can take up to a minute.</p>
+        <p><span className="inline-spinner" />Loading the survey list… large areas like Hyderabad can take up to a minute.</p>
       ) : data.count === 0 ? (
-        <p>No properties listed here.</p>
+        <p>No prohibited properties are listed here.</p>
       ) : (
         <>
           <input
@@ -599,7 +622,7 @@ function SurveyList({ location, kind }) {
             {matches.length > SURVEY_ROWS_SHOWN ? `, showing the first ${SURVEY_ROWS_SHOWN}. Type to narrow down.` : ''}
           </p>
           <div className="survey-scroll">
-            <table>
+            <table className="stack-on-mobile">
               <thead>
                 <tr>
                   <th>Survey No.</th>
@@ -617,21 +640,23 @@ function SurveyList({ location, kind }) {
               <tbody>
                 {shown.map((r, i) => (
                   <tr key={i}>
-                    <td>{joinNo(r.survey_no, r.sub_survey_no)}</td>
-                    <td>{joinNo(r.rev_survey_no, r.rev_sub_survey_no)}</td>
-                    <td>{r.door_no}</td>
-                    <td>{r.ward_block}</td>
-                    <td>{r.plot_no}</td>
-                    <td>{r.extent}</td>
-                    <td>{r.reason}</td>
-                    <td>
-                      {r.order_id
-                        ? <a href={`/api/prohibited-lands/order?${new URLSearchParams({ order_id: r.order_id, flag: r.order_flag })}`} target="_blank" rel="noopener noreferrer">{r.order_no} ↗</a>
-                        : r.order_no}
-                      {r.order_date && <><br />{r.order_date}</>}
+                    <td data-label="Survey No.">{joinNo(r.survey_no, r.sub_survey_no)}</td>
+                    <td data-label="Rev. Survey No.">{joinNo(r.rev_survey_no, r.rev_sub_survey_no)}</td>
+                    <td data-label="Door No.">{r.door_no}</td>
+                    <td data-label="Ward-Block">{r.ward_block}</td>
+                    <td data-label="Plot No.">{r.plot_no}</td>
+                    <td data-label="Extent">{r.extent}</td>
+                    <td data-label="Reason">{r.reason}</td>
+                    <td data-label="Order">
+                      <span>
+                        {r.order_id
+                          ? <a href={`/api/prohibited-lands/order?${new URLSearchParams({ order_id: r.order_id, flag: r.order_flag })}`} target="_blank" rel="noopener noreferrer">{r.order_no} ↗</a>
+                          : r.order_no}
+                        {r.order_date && <><br />{r.order_date}</>}
+                      </span>
                     </td>
-                    <td>{r.volume_page}</td>
-                    <td>{r.sro}</td>
+                    <td data-label="Volume / Page">{r.volume_page}</td>
+                    <td data-label="SRO">{r.sro}</td>
                   </tr>
                 ))}
               </tbody>
@@ -730,6 +755,15 @@ export default function App() {
       window.removeEventListener('scroll', onScroll)
     }
   }, [])
+
+  // On phones the tab bar scrolls sideways; slide it so the active tab stays in view.
+  // Only the bar scrolls (not the page), so a smooth section scroll isn't interrupted.
+  useEffect(() => {
+    const nav = document.querySelector('.navbar')
+    const tab = nav?.querySelector('.nav-tab.active')
+    if (!nav || !tab || nav.scrollWidth <= nav.clientWidth) return
+    nav.scrollTo({ left: tab.offsetLeft - (nav.clientWidth - tab.offsetWidth) / 2, behavior: 'smooth' })
+  }, [activeId])
 
   function scrollToSection(id) {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
