@@ -107,6 +107,36 @@ function ResultBox({ error, result }) {
           ))}
         </div>
       )}
+
+      {result.found && result.rows?.length > 0 && <MarketValueTable rows={result.rows} />}
+    </div>
+  )
+}
+
+// Same columns, in the same order, as the official IGRS results page.
+function MarketValueTable({ rows }) {
+  return (
+    <div className="portal-table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Ward-Block</th>
+            <th>Locality</th>
+            <th>Land Value (₹ per sq. yard)</th>
+            <th>Effective Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i}>
+              <td>{r.ward_block}</td>
+              <td>{r.locality}</td>
+              <td>{r.land_rate_per_sq_yard}</td>
+              <td>{r.effective_date}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
@@ -444,6 +474,136 @@ function AdangalForm() {
   )
 }
 
+// Hyderabad has no village list on the portal, so it gets its own form. Each
+// form remounts when the area changes, which clears the other one's state.
+function MarketValueForm() {
+  const [area, setArea] = useState('village')
+
+  return (
+    <>
+      <Field label="Area" required>
+        <select value={area} onChange={(e) => setArea(e.target.value)}>
+          <option value="village">Outside Hyderabad: search by village</option>
+          <option value="hyderabad">Hyderabad (GHMC): search by locality</option>
+        </select>
+      </Field>
+      {area === 'village' ? <VillageMarketValueForm /> : <HyderabadMarketValueForm />}
+    </>
+  )
+}
+
+function VillageMarketValueForm() {
+  const { post } = useApi()
+  const { result, error, loading, run, setError } = useFormState()
+  const [village, setVillage] = useState(null)
+
+  function submit(e) {
+    e.preventDefault()
+    if (!village) { setError('Please select a village first.'); return }
+    run(() => post('/api/market-value/search', {
+      district_id: village.district_id,
+      mandal_id: village.mandal_id,
+      mandal: village.mandal,
+      village_id: village.village_id,
+      village: village.village,
+    }))
+  }
+
+  return (
+    <form onSubmit={submit}>
+      <Field label="Village / Mandal" required>
+        <VillageSearch portal="market-value" onSelect={setVillage} />
+      </Field>
+      <button type="submit" disabled={loading || !village} className={loading ? 'btn-loading' : ''}>
+        {loading ? <><span className="btn-spinner" /> Fetching rates…</> : 'Get Market Value'}
+      </button>
+      <ResultBox error={error} result={result} />
+    </form>
+  )
+}
+
+function HyderabadMarketValueForm() {
+  const { post, get } = useApi()
+  const { result, error, loading, run, setError } = useFormState()
+  const [divisions, setDivisions] = useState([])
+  const [divisionId, setDivisionId] = useState('')
+  const [locQuery, setLocQuery] = useState('')
+  const [localityIndex, setLocalityIndex] = useState('')
+  // Localities are stored with the division|text they were fetched for, so a
+  // stale reply never shows and "loading" just means no reply yet for what's typed.
+  const [fetched, setFetched] = useState({ key: '', list: [] })
+
+  const q = locQuery.trim()
+  const searchKey = divisionId && q.length >= 3 ? `${divisionId}|${q}` : ''
+  const localities = fetched.key === searchKey ? fetched.list : []
+  const locLoading = searchKey !== '' && fetched.key !== searchKey
+
+  useEffect(() => {
+    get('/api/market-value/hyderabad/divisions').then(setDivisions).catch((err) => setError(err.message))
+  }, [])
+
+  // The portal searches Hyderabad localities by name (3+ letters), so look them
+  // up shortly after the user stops typing.
+  useEffect(() => {
+    if (!searchKey) return
+    let cancelled = false
+    const t = setTimeout(async () => {
+      let list = []
+      try {
+        list = await get(`/api/market-value/hyderabad/localities?division_id=${encodeURIComponent(divisionId)}&q=${encodeURIComponent(q)}`)
+      } catch (err) {
+        if (!cancelled) setError(err.message)
+      }
+      if (!cancelled) setFetched({ key: searchKey, list })
+    }, 500)
+    return () => { cancelled = true; clearTimeout(t) }
+  }, [searchKey])
+
+  function submit(e) {
+    e.preventDefault()
+    const loc = localityIndex !== '' && localities[Number(localityIndex)]
+    if (!loc) { setError('Please pick a locality from the list.'); return }
+    run(() => post('/api/market-value/search', {
+      district_id: '16_1',
+      division_id: divisionId,
+      locality_id: loc.value,
+      locality: loc.label,
+    }))
+  }
+
+  return (
+    <form onSubmit={submit}>
+      <Field label="Division" required>
+        <select value={divisionId} onChange={(e) => { setDivisionId(e.target.value); setLocalityIndex('') }} required>
+          <option value="">Select Division</option>
+          {divisions.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+        </select>
+      </Field>
+      <Field label="Locality Name" required hint="First 3+ letters of the name">
+        <input
+          placeholder={divisionId ? 'e.g. Ameerpet' : 'Select division first'}
+          value={locQuery}
+          onChange={(e) => { setLocQuery(e.target.value); setLocalityIndex('') }}
+          disabled={!divisionId}
+          required
+        />
+      </Field>
+      <Field label="Locality" required>
+        <SelectLoading loading={locLoading} value={localityIndex} onChange={(e) => setLocalityIndex(e.target.value)} disabled={localities.length === 0} required>
+          <option value="">
+            {locLoading ? 'Searching localities…' : localities.length > 0 ? 'Select Locality' : searchKey ? 'No localities found' : 'Type a locality name above'}
+          </option>
+          {localities.map((l, i) => <option key={i} value={String(i)}>{l.label}</option>)}
+        </SelectLoading>
+      </Field>
+      <button type="submit" disabled={loading || localityIndex === ''} className={loading ? 'btn-loading' : ''}>
+        {loading ? <><span className="btn-spinner" /> Fetching rates…</> : 'Get Market Value'}
+      </button>
+      <ResultBox error={error} result={result} />
+    </form>
+  )
+}
+
 // ---------- page structure ----------
 const DOCUMENT_TYPES = [
   {
@@ -482,6 +642,15 @@ const DOCUMENT_TYPES = [
     description: 'Land ownership, cultivation, and usage record for agricultural land by village and survey number.',
     Form: AdangalForm,
   },
+  {
+    id: 'market-value',
+    icon: 'ti ti-currency-rupee',
+    navLabel: 'Market Value',
+    tag: 'Registration dept',
+    heading: 'Land Market Value',
+    description: 'Official government land rates (₹ per sq. yard) by village, or by locality in Hyderabad, as used for stamp duty and registration.',
+    Form: MarketValueForm,
+  },
 ]
 
 function Skyline() {
@@ -500,8 +669,13 @@ export default function App() {
 
   useEffect(() => {
     const sections = DOCUMENT_TYPES.map((d) => document.getElementById(d.id)).filter(Boolean)
+    const lastId = DOCUMENT_TYPES[DOCUMENT_TYPES.length - 1].id
+    // The last section can't scroll up into the observer's band, so at the very
+    // bottom of the page it is the active one.
+    const atBottom = () => window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2
     const observer = new IntersectionObserver(
       (entries) => {
+        if (atBottom()) { setActiveId(lastId); return }
         const visible = entries
           .filter((e) => e.isIntersecting)
           .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0]
@@ -509,8 +683,13 @@ export default function App() {
       },
       { rootMargin: '-35% 0px -50% 0px', threshold: [0, 0.25, 0.5, 0.75, 1] }
     )
+    const onScroll = () => { if (atBottom()) setActiveId(lastId) }
     sections.forEach((s) => observer.observe(s))
-    return () => observer.disconnect()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('scroll', onScroll)
+    }
   }, [])
 
   function scrollToSection(id) {
@@ -552,12 +731,12 @@ export default function App() {
 
         <h1>Telangana's own <em>property records</em> engine.</h1>
         <p className="tagline">
-          Search property tax, mutation, and land records — verified live from GHMC and CCLA, Telangana.
+          Search property tax, mutation, land records, and market values — verified live from GHMC, CCLA, and IGRS, Telangana.
         </p>
 
         <div className="stat-bar">
           <div className="stat">
-            <span className="num">4</span>
+            <span className="num">5</span>
             <span className="label">Live Document Types</span>
           </div>
           <div className="stat">
