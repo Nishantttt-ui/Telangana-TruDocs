@@ -22,12 +22,18 @@ def villages_search(q: str = ""):
 
 @router.get("/survey-options/{village_id}")
 def survey_options(village_id: str):
-    return pattadar_client.fetch_survey_options(village_id)
+    try:
+        return pattadar_client.fetch_survey_options(village_id)
+    except PortalError as exc:
+        raise _http_error(exc)
 
 
 @router.get("/khata-options/{village_id}")
 def khata_options(village_id: str, survey_no: str):
-    return pattadar_client.fetch_khata_options(village_id, survey_no)
+    try:
+        return pattadar_client.fetch_khata_options(village_id, survey_no)
+    except PortalError as exc:
+        raise _http_error(exc)
 
 
 class PattadarRequest(BaseModel):

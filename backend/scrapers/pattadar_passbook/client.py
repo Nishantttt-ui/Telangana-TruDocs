@@ -98,16 +98,39 @@ def _client(timeout: float = 45.0) -> httpx.Client:
     )
 
 
-def _get(client: httpx.Client, path: str) -> httpx.Response:
+def _get(client: httpx.Client, path: str, params: dict | None = None) -> httpx.Response:
     try:
         _throttle.wait()
-        resp = client.get(path)
+        resp = client.get(path, params=params)
         resp.raise_for_status()
         return resp
     except httpx.TimeoutException as exc:
         raise PortalError(PORTAL_TIMEOUT, str(exc)) from exc
     except httpx.HTTPError as exc:
         raise PortalError(PORTAL_DOWN, str(exc)) from exc
+
+
+# Checked before anything reaches the portal. Values also travel as encoded params:
+# pasting them into the URL let "507004&flag=x" rewrite the portal request.
+_ID_RE = re.compile(r"[0-9]{1,10}")  # not \d: that also matches Telugu and other non-ASCII digits
+# Survey numbers mix digits, "/" and Telugu letters plus vowel signs (e.g. "1/2అ",
+# which a \w whitelist would reject), so block only characters that could change a
+# request's meaning.
+_SURVEY_BAD_RE = re.compile(r"[&#?=%<>\"'\\\x00-\x1f]")
+
+
+def _check_id(value: str, what: str) -> str:
+    value = (value or "").strip()
+    if not _ID_RE.fullmatch(value):
+        raise PortalError(BAD_INPUT, f"invalid {what}")
+    return value
+
+
+def _check_survey(value: str) -> str:
+    value = (value or "").strip()
+    if not value or len(value) > 40 or _SURVEY_BAD_RE.search(value):
+        raise PortalError(BAD_INPUT, "invalid survey number")
+    return value
 
 
 _OPTION_RE = re.compile(r'<option[^>]*value=(?:"([^"]*)"|\'([^\']*)\'|([^\s>]+))[^>]*>([^<]*)')
@@ -143,33 +166,38 @@ def fetch_districts() -> list:
 
 @lru_cache(maxsize=64)
 def fetch_mandals(district_id: str) -> list:
+    district_id = _check_id(district_id, "district")
     with _client() as client:
         _get(client, LANDING_PATH)
-        resp = _get(client, f"/getMandalFromDivisionCitizenPortal?district={district_id}")
+        resp = _get(client, "/getMandalFromDivisionCitizenPortal", {"district": district_id})
     return _find_options(resp.text)
 
 
 @lru_cache(maxsize=1024)
 def fetch_villages(mandal_id: str) -> list:
+    mandal_id = _check_id(mandal_id, "mandal")
     with _client() as client:
         _get(client, LANDING_PATH)
-        resp = _get(client, f"/getVillageFromMandalCitizenPortal?mandalId={mandal_id}")
+        resp = _get(client, "/getVillageFromMandalCitizenPortal", {"mandalId": mandal_id})
     return _find_options(resp.text)
 
 
 @lru_cache(maxsize=4096)
 def fetch_survey_options(village_id: str) -> list:
+    village_id = _check_id(village_id, "village")
     with _client() as client:
         _get(client, LANDING_PATH)
-        resp = _get(client, f"/getSurveyCitizen?villId={village_id}&flag=survey")
+        resp = _get(client, "/getSurveyCitizen", {"villId": village_id, "flag": "survey"})
     return _find_options(resp.text)
 
 
 @lru_cache(maxsize=8192)
 def fetch_khata_options(village_id: str, survey_no: str) -> list:
+    village_id = _check_id(village_id, "village")
+    survey_no = _check_survey(survey_no)
     with _client() as client:
         _get(client, LANDING_PATH)
-        resp = _get(client, f"/getKhataNoCitizen?villId={village_id}&flag=khatanos&surveyNo={survey_no}")
+        resp = _get(client, "/getKhataNoCitizen", {"villId": village_id, "flag": "khatanos", "surveyNo": survey_no})
     return _find_options(resp.text)
 
 
@@ -252,8 +280,11 @@ def _search_with_captcha(client: httpx.Client, build_request, max_attempts: int)
 def fetch_pattadar_by_survey(
     *, district_id: str, mandal_id: str, village_id: str, survey_no: str, khata_id: str, max_attempts: int = 8
 ) -> dict:
-    if not all([district_id, mandal_id, village_id, survey_no, khata_id]):
-        raise PortalError(BAD_INPUT, "district, mandal, village, survey number and khata number are all required")
+    district_id = _check_id(district_id, "district")
+    mandal_id = _check_id(mandal_id, "mandal")
+    village_id = _check_id(village_id, "village")
+    khata_id = _check_id(khata_id, "khata")
+    survey_no = _check_survey(survey_no)
 
     def build_request(captcha: str):
         # Confirmed from a captured session: district and mandal travel in the URL
@@ -293,7 +324,7 @@ def fetch_pattadar_by_passbook(
         raise PortalError(BAD_INPUT, "passbook number and the last 4 Aadhaar digits are both required")
     if not re.fullmatch(r"[A-Za-z0-9]{1,12}", passbook_no):
         raise PortalError(BAD_INPUT, "passbook number looks invalid")
-    if not re.fullmatch(r"\d{4}", aadhaar_last4):
+    if not re.fullmatch(r"[0-9]{4}", aadhaar_last4):
         raise PortalError(BAD_INPUT, "enter exactly the last 4 digits of the Aadhaar number")
 
     def build_request(captcha: str):

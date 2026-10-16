@@ -51,6 +51,7 @@ def test_passbook_inputs_checked_before_the_portal():
     _raises(BAD_INPUT, client.fetch_pattadar_by_passbook, passbook_no="", aadhaar_last4="1234")
     _raises(BAD_INPUT, client.fetch_pattadar_by_passbook, passbook_no="123", aadhaar_last4="12")      # not 4 digits
     _raises(BAD_INPUT, client.fetch_pattadar_by_passbook, passbook_no="123", aadhaar_last4="12ab")    # not digits
+    _raises(BAD_INPUT, client.fetch_pattadar_by_passbook, passbook_no="123", aadhaar_last4="౧౨౩౪")    # Telugu digits
     _raises(BAD_INPUT, client.fetch_pattadar_by_passbook, passbook_no="has space", aadhaar_last4="1234")
     _raises(BAD_INPUT, client.fetch_pattadar_by_passbook, passbook_no="X" * 13, aadhaar_last4="1234")  # too long
 
@@ -141,3 +142,61 @@ def test_identical_searches_at_once_hit_the_portal_once(monkeypatch):
         results = list(pool.map(lambda _: client.fetch_pattadar_by_survey(**args), range(8)))
     assert len(calls) == 1
     assert all(r["found"] and r == results[0] for r in results)
+
+
+# ---------- security: validation at the trust boundary + encoded params ----------
+
+def _capture_get(monkeypatch):
+    seen = []
+
+    class Reply:
+        text = '<option value="337">337</option>'
+
+    def fake_get(_client, path, params=None):
+        seen.append((path, params))
+        return Reply()
+
+    monkeypatch.setattr(client, "_get", fake_get)
+    return seen
+
+
+def test_dropdown_requests_send_encoded_params_not_pasted_urls(monkeypatch):
+    seen = _capture_get(monkeypatch)
+    client.fetch_survey_options.__wrapped__("507004")
+    client.fetch_khata_options.__wrapped__("507004", "1/2అ")
+    assert ("/getSurveyCitizen", {"villId": "507004", "flag": "survey"}) in seen
+    assert ("/getKhataNoCitizen", {"villId": "507004", "flag": "khatanos", "surveyNo": "1/2అ"}) in seen
+    assert not any("?" in path for path, _ in seen)  # nothing pasted into the URL
+
+
+def test_injected_or_malformed_inputs_are_rejected_before_the_portal(monkeypatch):
+    seen = _capture_get(monkeypatch)
+    _raises(BAD_INPUT, client.fetch_survey_options.__wrapped__, "507004&flag=khatanos")
+    _raises(BAD_INPUT, client.fetch_khata_options.__wrapped__, "507004", "1&flag=x")
+    _raises(BAD_INPUT, client.fetch_khata_options.__wrapped__, "abc", "1/2")
+    _raises(BAD_INPUT, client.fetch_mandals.__wrapped__, "5#x")
+    _raises(BAD_INPUT, client.fetch_villages.__wrapped__, "")
+    _raises(BAD_INPUT, client.fetch_survey_options.__wrapped__, "౫౦౭")  # Telugu digits
+    survey = dict(district_id="5", mandal_id="83", village_id="507004", survey_no="1/2అ", khata_id="337")
+    _raises(BAD_INPUT, client.fetch_pattadar_by_survey, **{**survey, "district_id": "5;"})
+    _raises(BAD_INPUT, client.fetch_pattadar_by_survey, **{**survey, "khata_id": ""})
+    _raises(BAD_INPUT, client.fetch_pattadar_by_survey, **{**survey, "survey_no": "1/2<script>"})
+    assert [p for p, _ in seen if p != client.LANDING_PATH] == []  # the portal was never asked
+
+
+def test_real_telugu_survey_numbers_are_allowed():
+    # Seen live: "/" plus Telugu letters and vowel signs (ు, ూ) — a \w whitelist would reject these.
+    for s in ("1/2అ", "12/ు", "45/ూ1", "123"):
+        assert client._check_survey(s) == s
+
+
+@pytest.mark.parametrize("message, status", [(BAD_INPUT, 400), (PORTAL_DOWN, 502)])
+def test_dropdown_endpoints_map_errors_instead_of_500(monkeypatch, message, status):
+    def fail(*_):
+        raise PortalError(message)
+
+    monkeypatch.setattr(client, "fetch_survey_options", fail)
+    monkeypatch.setattr(client, "fetch_khata_options", fail)
+    c = _app()
+    assert c.get("/api/pattadar/survey-options/507004").status_code == status
+    assert c.get("/api/pattadar/khata-options/507004?survey_no=1").status_code == status

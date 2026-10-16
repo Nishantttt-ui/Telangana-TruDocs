@@ -351,8 +351,8 @@ function SurveySearchForm() {
     reset()
     if (v) {
       setSurveyLoading(true)
-      try { setSurveyOptions(await get(`/api/pattadar/survey-options/${v.village_id}`)) }
-      catch {}
+      try { setSurveyOptions(await get(`/api/pattadar/survey-options/${encodeURIComponent(v.village_id)}`)) }
+      catch (err) { setError(err.message) }
       finally { setSurveyLoading(false) }
     }
   }
@@ -363,8 +363,8 @@ function SurveySearchForm() {
     reset()
     if (value && village) {
       setKhataLoading(true)
-      try { setKhataOptions(await get(`/api/pattadar/khata-options/${village.village_id}?survey_no=${encodeURIComponent(value)}`)) }
-      catch {}
+      try { setKhataOptions(await get(`/api/pattadar/khata-options/${encodeURIComponent(village.village_id)}?survey_no=${encodeURIComponent(value)}`)) }
+      catch (err) { setError(err.message) }
       finally { setKhataLoading(false) }
     }
   }
