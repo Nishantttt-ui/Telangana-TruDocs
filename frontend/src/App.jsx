@@ -2,23 +2,33 @@ import { useEffect, useRef, useState } from 'react'
 import './App.css'
 
 // ---------- shared API hook ----------
+// Every failure becomes a sentence a user can act on: the server's own message when it
+// sent one, otherwise a plain explanation (never "Failed to fetch" or "[object Object]").
+async function errorMessage(res) {
+  const data = await res.json().catch(() => ({}))
+  if (typeof data.detail === 'string' && data.detail) return data.detail
+  if (res.status === 429) return 'Too many searches right now. Please wait a minute and try again.'
+  if (res.status >= 500) return "The land-records portal isn't responding right now. Please try again in a few minutes."
+  return 'Please check the details you entered and try again.'
+}
+
 function useApi() {
-  async function post(path, body) {
-    const res = await fetch(path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok) throw new Error(data.detail || 'Something went wrong.')
-    return data
+  async function request(path, options) {
+    let res
+    try {
+      res = await fetch(path, options)
+    } catch {
+      throw new Error("Can't reach TruDocs right now. Please check your internet connection and try again.")
+    }
+    if (!res.ok) throw new Error(await errorMessage(res))
+    return res.json().catch(() => ({}))
   }
-  async function get(path) {
-    const res = await fetch(path)
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok) throw new Error(data.detail || 'Something went wrong.')
-    return data
-  }
+  const post = (path, body) => request(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const get = (path) => request(path)
   return { post, get }
 }
 
@@ -27,21 +37,33 @@ function useFormState() {
   const [result, setResult] = useState(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  // Only the latest search may set the result: a reply for an older one is dropped.
+  const generation = useRef(0)
 
   async function run(fn) {
+    const gen = ++generation.current
     setError('')
     setResult(null)
     setLoading(true)
     try {
-      setResult(await fn())
+      const data = await fn()
+      if (gen === generation.current) setResult(data)
     } catch (err) {
-      setError(err.message)
+      if (gen === generation.current) setError(err.message)
     } finally {
-      setLoading(false)
+      if (gen === generation.current) setLoading(false)
     }
   }
 
-  return { result, error, loading, run, setError }
+  // Clear the result when the inputs change, so it never shows under the wrong search.
+  function reset() {
+    generation.current++
+    setResult(null)
+    setError('')
+    setLoading(false)
+  }
+
+  return { result, error, loading, run, setError, reset }
 }
 
 // ---------- field label prettifier ----------
@@ -294,9 +316,26 @@ function PropertyTaxForm() {
   )
 }
 
-function PattadarForm() {
+// "Land Details Search" offers the portal's two public search modes. Each is its own
+// sub-form so switching mode remounts and clears the other's state.
+function LandDetailsForm() {
+  const [mode, setMode] = useState('survey')
+  return (
+    <>
+      <Field label="Search By" required>
+        <select value={mode} onChange={(e) => setMode(e.target.value)}>
+          <option value="survey">Survey / Khata number</option>
+          <option value="passbook">Passbook number + Aadhaar</option>
+        </select>
+      </Field>
+      {mode === 'survey' ? <SurveySearchForm /> : <PassbookSearchForm />}
+    </>
+  )
+}
+
+function SurveySearchForm() {
   const { post, get } = useApi()
-  const { result, error, loading, run, setError } = useFormState()
+  const { result, error, loading, run, setError, reset } = useFormState()
   const [village, setVillage] = useState(null)
   const [surveyOptions, setSurveyOptions] = useState([])
   const [khataOptions, setKhataOptions] = useState([])
@@ -309,6 +348,7 @@ function PattadarForm() {
     setVillage(v)
     setSurveyOptions([]); setKhataOptions([])
     setSurveyNo(''); setKhataId('')
+    reset()
     if (v) {
       setSurveyLoading(true)
       try { setSurveyOptions(await get(`/api/pattadar/survey-options/${v.village_id}`)) }
@@ -320,6 +360,7 @@ function PattadarForm() {
   async function onSurvey(value) {
     setSurveyNo(value)
     setKhataOptions([]); setKhataId('')
+    reset()
     if (value && village) {
       setKhataLoading(true)
       try { setKhataOptions(await get(`/api/pattadar/khata-options/${village.village_id}?survey_no=${encodeURIComponent(value)}`)) }
@@ -359,20 +400,65 @@ function PattadarForm() {
           <input
             placeholder={village ? 'e.g. 123 or 1/2A' : 'Select village first'}
             value={surveyNo}
-            onChange={(e) => { setSurveyNo(e.target.value); setKhataOptions([]); setKhataId('') }}
+            onChange={(e) => { setSurveyNo(e.target.value); setKhataOptions([]); setKhataId(''); reset() }}
             disabled={!village}
             required
           />
         )}
       </Field>
       <Field label="Khata Number" required>
-        <SelectLoading loading={khataLoading} value={khataId} onChange={(e) => setKhataId(e.target.value)} disabled={!surveyNo} required>
+        <SelectLoading loading={khataLoading} value={khataId} onChange={(e) => { setKhataId(e.target.value); reset() }} disabled={!surveyNo} required>
           <option value="">{khataLoading ? 'Loading khata numbers…' : 'Select Khata Number'}</option>
           {khataOptions.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
         </SelectLoading>
       </Field>
       <button type="submit" disabled={loading || !village} className={loading ? 'btn-loading' : ''}>
-        {loading ? <><span className="btn-spinner" /> Fetching record…</> : 'Fetch Pattadar Details'}
+        {loading ? <><span className="btn-spinner" /> Fetching record…</> : 'Fetch Land Details'}
+      </button>
+      <ResultBox error={error} result={result} />
+    </form>
+  )
+}
+
+function PassbookSearchForm() {
+  const { post } = useApi()
+  const { result, error, loading, run, setError, reset } = useFormState()
+  const [passbookNo, setPassbookNo] = useState('')
+  const [aadhaar, setAadhaar] = useState('')
+
+  function submit(e) {
+    e.preventDefault()
+    if (!passbookNo.trim()) { setError('Please enter the passbook number.'); return }
+    if (!/^\d{4}$/.test(aadhaar)) { setError('Please enter exactly the last 4 digits of the Aadhaar number.'); return }
+    run(() => post('/api/pattadar/search-by-passbook', {
+      passbook_no: passbookNo.trim(),
+      aadhaar_last4: aadhaar,
+    }))
+  }
+
+  return (
+    <form onSubmit={submit}>
+      <Field label="Passbook (PPB) Number" required hint="On the land passbook, up to 12 characters">
+        <input
+          placeholder="e.g. 123456789012"
+          value={passbookNo}
+          onChange={(e) => { setPassbookNo(e.target.value.replace(/[^A-Za-z0-9]/g, '').slice(0, 12)); reset() }}
+          autoComplete="off"
+          required
+        />
+      </Field>
+      <Field label="Last 4 digits of Aadhaar" required hint="Of the passbook holder">
+        <input
+          inputMode="numeric"
+          placeholder="e.g. 1234"
+          value={aadhaar}
+          onChange={(e) => { setAadhaar(e.target.value.replace(/\D/g, '').slice(0, 4)); reset() }}
+          autoComplete="off"
+          required
+        />
+      </Field>
+      <button type="submit" disabled={loading} className={loading ? 'btn-loading' : ''}>
+        {loading ? <><span className="btn-spinner" /> Fetching record…</> : 'Fetch Land Details'}
       </button>
       <ResultBox error={error} result={result} />
     </form>
@@ -467,11 +553,11 @@ const DOCUMENT_TYPES = [
   {
     id: 'pattadar-passbook',
     icon: 'ti ti-id-badge-2',
-    navLabel: 'Pattadar Passbook',
+    navLabel: 'Land Details Search',
     tag: 'Revenue dept',
-    heading: 'Pattadar Passbook',
-    description: 'Land ownership and passbook details by village, survey and khata number.',
-    Form: PattadarForm,
+    heading: 'Land Details Search',
+    description: 'Agricultural land status and ownership from Bhu Bharati — by village + survey/khata number, or by passbook number and the last 4 digits of the owner’s Aadhaar.',
+    Form: LandDetailsForm,
   },
   {
     id: 'adangal',
@@ -500,8 +586,13 @@ export default function App() {
 
   useEffect(() => {
     const sections = DOCUMENT_TYPES.map((d) => document.getElementById(d.id)).filter(Boolean)
+    const lastId = DOCUMENT_TYPES[DOCUMENT_TYPES.length - 1].id
+    // The last section can't scroll up into the observer's band, so at the very
+    // bottom of the page it is the active one.
+    const atBottom = () => window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2
     const observer = new IntersectionObserver(
       (entries) => {
+        if (atBottom()) { setActiveId(lastId); return }
         const visible = entries
           .filter((e) => e.isIntersecting)
           .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0]
@@ -509,9 +600,22 @@ export default function App() {
       },
       { rootMargin: '-35% 0px -50% 0px', threshold: [0, 0.25, 0.5, 0.75, 1] }
     )
+    const onScroll = () => { if (atBottom()) setActiveId(lastId) }
     sections.forEach((s) => observer.observe(s))
-    return () => observer.disconnect()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('scroll', onScroll)
+    }
   }, [])
+
+  // On phones the tab bar scrolls sideways; slide it so the active tab stays in view.
+  useEffect(() => {
+    const nav = document.querySelector('.navbar')
+    const tab = nav?.querySelector('.nav-tab.active')
+    if (!nav || !tab || nav.scrollWidth <= nav.clientWidth) return
+    nav.scrollTo({ left: tab.offsetLeft - (nav.clientWidth - tab.offsetWidth) / 2, behavior: 'smooth' })
+  }, [activeId])
 
   function scrollToSection(id) {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })

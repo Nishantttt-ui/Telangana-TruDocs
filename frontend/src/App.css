@@ -597,3 +597,15 @@ button[type="submit"]:disabled { opacity: 0.6; cursor: not-allowed; }
   letter-spacing: 0;
   margin-left: 8px;
 }
+
+/* ---------- mobile web (phones, ≤ 600px) ---------- */
+@media (max-width: 600px) {
+  /* iPhones zoom the whole page in on any input whose text is smaller than 16px. */
+  input, select { font-size: 16px; }
+  /* The three hero stats were 7px wider than a phone screen. */
+  .stat { padding: 0 14px; }
+  /* The result's label/value list stacks so long labels don't force sideways scroll. */
+  .field-list { grid-template-columns: 1fr; }
+  .field-list dt { white-space: normal; border-right: none; padding-bottom: 2px; }
+  .field-list dd { padding-top: 2px; }
+}
